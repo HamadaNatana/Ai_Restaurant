@@ -1,0 +1,7 @@
+item_id,name,description,price,category,ingredients,is_special,is_available
+1,Burger,Beef patty with cheese,8.99,Main,"beef,cheese,bun",False,True
+2,Margherita Pizza,Classic cheese pizza,12.50,Main,"tomato,cheese,basil",False,True
+3,Vegan Salad,Mixed greens with vinaigrette,9.75,Main,"lettuce,carrot,olive_oil",False,True
+4,Spicy Wings,Hot chicken wings (6 pcs),11.25,Appetizer,"chicken,pepper,garlic",False,True
+5,VIP Steak,Premium ribeye steak,29.99,Main,"beef,salt,pepper",True,True
+6,Chocolate Cake,Chocolate slice,6.50,Dessert,"flour,egg,chocolate",False,True

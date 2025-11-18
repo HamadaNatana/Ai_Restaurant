@@ -1,0 +1,31 @@
+kb_id,question,answer,author_username
+1,what are your opening hours?,We are open from 10 AM to 10 PM every day.,manager1
+2,do you have vegan options?,Yes! we have a Vegan Salad and other plant-based dishes.,chef1
+3,how does vip discount work?,VIP customers get 5% discount on normal orders and one free delivery per 3 orders.,manager1
+4,Do you take reservations?,Yes, we highly recommend making a reservation, especially on weekends. You can book a table through our website or by calling us at [Phone Number].,manager1
+5,I have a severe nut allergy. Can you accommodate that?,We take allergies very seriously. Please inform your server and the manager, and we will guide you through the safe, carefully prepared options.,chef1
+6,Do you have any gluten-free options?,Yes, we offer gluten-free alternatives for many of our dishes. Look for the 'GF' symbol on the menu, or just ask your server.,chef1
+7,Do you offer takeout or delivery?,Yes, we offer both! You can place a takeout order by calling us directly or find us on [Delivery App Names, e.g., DoorDash, Uber Eats].,support_team
+8,Do you have a kids' menu or high chairs?,Yes, we have a special menu for children under 12, and we have high chairs and booster seats available.,support_team
+9,What is your most popular dish?,Our guests consistently rave about the **[Signature Dish Name]**, which is [Brief Description, e.g., our house-made lobster ravioli with a lemon-butter sauce].,chef1
+10,Is your restaurant wheelchair accessible?,Yes, our entrance, dining area, and restrooms are all wheelchair accessible.,manager1
+11,What forms of payment do you accept?,We accept all major credit cards (Visa, Mastercard, Amex, Discover), as well as debit cards and cash.,manager1
+12,Do you have outdoor seating?,Yes, we have a patio/outdoor seating area that is open weather permitting. Please specify if you prefer an outdoor table when booking.,support_team
+13,Can we bring our own birthday cake?,Yes, you may bring your own cake. We charge a small plating fee of $[Fee Amount] per person.,manager1
+14,Do you have a loyalty program?,Yes, we do! You can sign up for our rewards program on our website or at the host stand to earn points on every purchase.,manager1
+15,Is there a dress code?,We have a smart casual dress code. We ask that guests refrain from wearing beach attire or excessively casual clothing in the evenings.,manager1
+16,Can I customize my order?,Most dishes can be slightly customized (e.g., sauces on the side, substituting vegetables). Please discuss any changes with your server before ordering.,chef1
+17,Do you have a full bar?,Yes, we have a full-service bar offering a wide selection of cocktails, beer, and wine.,support_team
+18,Where can I find nutritional information?,Due to the frequent rotation of our specials, we do not provide full nutritional information, but we can provide ingredient lists upon request.,chef1
+19,How long is the wait time right now?,The current estimated wait time for a table of [Number] is approximately [Time, e.g., 20-30 minutes].,support_team
+20,Do you offer military or first responder discounts?,Yes, we proudly offer a 10% discount to all active military personnel and first responders with valid ID.,manager1
+21,Can I pay separately from my group?,We are happy to split checks up to a maximum of [Number, e.g., 4] ways. For larger groups, we may request a single payment.,manager1
+22,Are the restrooms easily accessible?,Yes, the restrooms are located [Location, e.g., on the main floor near the bar] and are fully accessible.,support_team
+23,Do you serve breakfast/brunch?,We serve [Meal Type, e.g., dinner only] on weekdays, and both lunch and dinner on weekends. We do not offer breakfast or brunch.,manager1
+24,Can I reserve a private dining room?,Yes, we have a private dining room that can accommodate up to [Number] guests. Please call our events coordinator at [Phone Number] for availability and menus.,manager1
+25,What is your corkage fee?,If you bring your own bottle of wine, our corkage fee is $[Fee Amount] per standard 750ml bottle.,manager1
+26,Is the soup of the day vegetarian?,Today's soup of the day is [Soup Name], which is [Dietary Status, e.g., vegetarian/chicken-based/vegan]. Please ask your server for details.,chef1
+27,Do you offer catering services?,Yes, we offer off-site catering for events large and small. You can view our catering menu and contact form on our website.,manager1
+28,Can I leave feedback about my experience?,We welcome feedback! You can speak to the manager on duty, or submit comments through the feedback link on our website, [Website URL].,support_team
+29,Are there any service charges for large groups?,For parties of [Number, typically 6 or 8] or more, an automatic gratuity of [Percentage, typically 18-20]% is applied to the bill.,manager1
+30,What kind of coffee do you serve?,We serve [Brand Name or Type, e.g., locally roasted dark blend] coffee, available as espresso, Americano, and pour-over.,chef1

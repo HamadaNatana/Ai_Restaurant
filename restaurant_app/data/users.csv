@@ -1,0 +1,6 @@
+user_id,username,password,role,status,warnings,deposit,total_spent,num_orders,blacklisted
+1,customer1,pass123,CUSTOMER,ACTIVE,0,100.0,120.0,4,False
+2,vip1,pass123,VIP,ACTIVE,0,200.0,300.0,10,False
+3,chef1,pass123,CHEF,ACTIVE,0,0.0,0.0,0,False
+4,delivery1,pass123,DELIVERY,ACTIVE,0,0.0,0.0,0,False
+5,manager1,pass123,MANAGER,ACTIVE,0,50.0,0.0,0,False
