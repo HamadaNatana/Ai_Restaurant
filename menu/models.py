@@ -1,25 +1,40 @@
+import uuid
 from django.db import models
+from django.conf import settings
+from common.models import TimeStampedModel
+from accounts.models import Customer
 
-class Allergen(models.Model):
+class Allergen(TimeStampedModel):
+    allergen_id =  models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    #ingredient_id = models.ForeignKey(Ingredient, on_delete=models.CASCADE)
     name = models.CharField(max_length=100, unique=True)
 
-class Ingredient(models.Model):
+class CustomerAllergy(TimeStampedModel):
+    customer_id = models.ForeignKey(Customer, on_delete=models.PROTECT)
+    allergen_id = models.ForeignKey(Allergen, on_delete=models.PROTECT)
+
+class Ingredient(TimeStampedModel):
+    ingredient_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=120, unique=True)
-    allergens = models.ManyToManyField(Allergen, blank=True)
+    allergens = models.OneToOneField(Allergen, blank=True, on_delete=models.PROTECT)
 
-class Chef(models.Model):
-    user = models.OneToOneField('accounts.User', on_delete=models.CASCADE)
+class Chef(TimeStampedModel):
+    chef_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    name = models.CharField(max_length=50)
+    is_active = models.BooleanField(default=True)
     salary = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    demotions = models.PositiveIntegerField(default=0)
+    demotion_count = models.PositiveIntegerField(default=0)
 
-class Dish(models.Model):
+class Dish(TimeStampedModel):
+    dish_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    chef_id = models.ForeignKey(Chef, on_delete=models.PROTECT)
     name = models.CharField(max_length=150)
     description = models.TextField(blank=True)
     price = models.DecimalField(max_digits=8, decimal_places=2)
-    ingredients = models.ManyToManyField(Ingredient, through='DishIngredient')
     picture = models.ImageField(upload_to='dishes/', blank=True, null=True)
     special_for_vip = models.BooleanField(default=False)  # FR-1.1.11
 
-class DishIngredient(models.Model):
+class DishIngredient(TimeStampedModel):
     dish = models.ForeignKey(Dish, on_delete=models.CASCADE)
     ingredient = models.ForeignKey(Ingredient, on_delete=models.CASCADE)

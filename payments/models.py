@@ -1,3 +1,22 @@
+import uuid
 from django.db import models
+from common.models import TimeStampedModel
+from accounts.models import Customer
+from orders.models import Order
 
-# Create your models here.
+class Transactions(TimeStampedModel):
+    TYPE_DEPOSIT = "deposit"
+    TYPE_CHARGE = "charge"
+    TYPE_REFUND = "refund"
+
+    TYPE_CHOICES = [
+        (TYPE_DEPOSIT, "Deposit"),
+        (TYPE_CHARGE, "Charge"),
+        (TYPE_REFUND, "Refund"),
+    ]
+
+    event_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    customer_id = models.ForeignKey(Customer, on_delete=models.PROTECT)
+    order_id = models.ForeignKey(Order, on_delete=models.PROTECT)
+    amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    type = models.CharField(max_length=10, choices=TYPE_CHOICES)
