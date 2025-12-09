@@ -200,7 +200,7 @@ def main():
                     save_posts(all_posts)
 
                     st.success("Topic created successfully. Scroll to the right to view.")
-                    st.experimental_rerun()
+                    st.rerun()  # <--- updated from st.experimental_rerun()
         else:
             st.warning("Only Registered/VIP customers can create topics.")
 
@@ -265,13 +265,13 @@ def main():
                         selected_topic_obj["last_activity_at"] = now_str()
                         save_topics(topics)
                         st.success("Topic locked.")
-                        st.experimental_rerun()
+                        st.rerun()  # <--- updated
                 with col_lock2:
                     if st.button("🔓 Unlock topic"):
                         selected_topic_obj["is_locked"] = "False"
                         save_topics(topics)
                         st.success("Topic unlocked.")
-                        st.experimental_rerun()
+                        st.rerun()  # <--- updated
 
             # Reply form
             st.markdown("#### Reply to this topic")
@@ -307,7 +307,7 @@ def main():
                             save_topics(topics)
 
                             st.success("Reply posted.")
-                            st.experimental_rerun()
+                            st.rerun()  # <--- updated
 
     st.markdown("---")
     st.caption(
