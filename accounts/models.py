@@ -22,7 +22,7 @@ class Customer(AbstractUser, TimeStampedModel):
 
     def can_place_order(self):
         return not self.is_blacklisted
-
+# UC4: VIP promotion/demotion
     def consider_vip_promotion(self):
         # BRR-2.1: spend > $100 OR 3 orders without outstanding complaints
         if (self.total_spent > 100) or (self.orders_count >= 3 and self.warnings == 0):

@@ -16,5 +16,9 @@ urlpatterns = [
     path('close-account/<int:customer_id>/', views.close_customer_account_view, name='close_customer_account'),
     
     path('dashboard/', views.dashboard_view, name='manager_dashboard'),
-    
+    # UC 02: Registering Pending Customers
+    path("registrations/pending/", views.pending_registrations_view, name="pending_registrations"),
+    path("registrations/<int:pk>/approve/", views.approve_registration_view, name="approve_registration"),
+    path("registrations/<int:pk>/reject/", views.reject_registration_view, name="reject_registration"),
 ]
+

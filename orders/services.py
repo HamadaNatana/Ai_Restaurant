@@ -1,3 +1,4 @@
+
 """
 Order Services - UC07: Cart & Checkout Business Logic
 Implements logic from UC07 pseudocode (Phase 1-5).
@@ -7,6 +8,10 @@ from typing import Tuple, Optional, Dict
 from django.db import transaction
 from django.db.models import F
 from django.contrib.auth import get_user_model
+from django.utils import timezone
+from .models import Order
+from accounts.models import Customer
+from accounts.services import update_customer_after_completed_order
 
 from menu.models import Dish 
 from orders.models import Order, OrderItem, Customer # Use Customer from orders.models for placeholders
@@ -47,7 +52,7 @@ class OrderService:
             return (False, "Dish not found or unavailable.")
         
         if not dish.is_active:
-             return (False, f"{dish.name} is currently unavailable.")
+            return (False, f"{dish.name} is currently unavailable.")
         
         success, msg, order = cls.get_or_create_pending_order(customer_id)
         if not success:
@@ -243,3 +248,39 @@ class OrderService:
             return (True, f"'{dish_name}' removed from cart.")
         except OrderItem.DoesNotExist:
             return (False, "Cart item not found in your pending order.")
+
+
+def complete_order(order: Order):
+    order.status = Order.STATUS_COMPLETED
+    order.save()
+
+    # update customer stats and VIP status
+    update_customer_after_completed_order(order.customer, float(order.total_price))
+
+def apply_vip_benefits(customer: Customer, order: Order) -> Order:
+    """
+    UC05: Apply VIP benefits during checkout.
+    - 5% discount on items_total
+    - Every 3rd VIP order → free delivery
+    """
+    if customer.status != Customer.STATUS_VIP:
+        return order  # nothing to do (registered customer)
+
+    # 1) 5% discount on items_total
+    order.items_total = order.items_total * 0.95
+    order.vip_discount_applied = True
+
+    # 2) Free delivery every 3rd VIP order
+    # Here we assume order_count is count of ALL previous orders (not including this one).
+    # On the 3rd, 6th, 9th... VIP order → free delivery
+    vip_order_number = customer.order_count + 1  # this order
+    if vip_order_number % 3 == 0:
+        order.delivery_fee = 0
+        order.free_delivery_applied = True
+    else:
+        order.free_delivery_applied = False
+
+    order.total_price = order.items_total + order.delivery_fee
+    order.save()
+    return order
+

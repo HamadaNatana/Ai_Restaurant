@@ -1,43 +1,50 @@
-from django.shortcuts import render
+
+from django.shortcuts import render, redirect
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required, user_passes_test
-from accounts.models import Customer
+from django.contrib.auth.decorators import login_required, user_passes_test,staff_member_required
+from django.utils import timezone
+from django.shortcuts import get_object_or_404
+from accounts.models import Customer, Manager
 from delivery.models import Driver
 from menu.models import Chef
 from reputation.models import WarningLog
+from .models import RegistrationApproval
+
 
 # Helper to check if user is a Manager
 def is_manager(user):
     return user.is_authenticated and getattr(user, 'is_manager', False)
 
 # --- UC 11: Manage HR (Hire, Fire, Pay) ---
-@user_passes_test(is_manager)
+#@user_passes_test(is_manager)
+@staff_member_required(Manager)
 def hire_employee_view(request):
     """Allows Manager to hire a new Chef or Driver"""
     if request.method == 'POST':
-        role = request.POST.get('role') # 'chef' or 'driver'
+        role = request.POST.get(Chef,Driver) # 'chef' or 'driver'
         username = request.POST.get('username')
         password = request.POST.get('password')
         salary = request.POST.get('salary')
         
         # 1. Create the User account (simplified)
         # You would likely use a detailed RegistrationForm here in production
-        from django.contrib.auth import get_user_model
-        User = get_user_model()
-        new_user = User.objects.create_user(username=username, password=password)
+        #from django.contrib.auth import get_user_model
+        #User = get_user_model()
+        new_user = Manager.objects.create_user(username=username, password=password)
         
         # 2. Create the specific Role profile
-        if role == 'chef':
-            Chef.objects.create(user=new_user, salary=salary, status='active')
-        elif role == 'driver':
-            Driver.objects.create(user=new_user, salary=salary, status='available')
+        if role == Chef:
+            Chef.objects.create(user=new_user, salary=salary, is_active=True) # , status='active'
+        elif role == Driver:
+            Driver.objects.create(user=new_user, salary=salary, is_active=True) # , status='available'
             
         messages.success(request, f"Hired new {role}: {username}")
         return redirect('manager_dashboard')
     
     return render(request, 'hr/hire_employee.html')
 
-@user_passes_test(is_manager)
+#@user_passes_test(is_manager)
+@staff_member_required(Manager)
 def fire_employee_view(request, employee_id, role):
     """Allows Manager to fire an employee (UC11 / BRR-2.8)"""
     if role == 'chef':
@@ -54,7 +61,8 @@ def fire_employee_view(request, employee_id, role):
     messages.warning(request, f"Fired employee {employee.user.username}")
     return redirect('manager_dashboard')
 
-@user_passes_test(is_manager)
+#@user_passes_test(is_manager)
+@staff_member_required(Manager)
 def update_salary_view(request, employee_id, role):
     """Allows Manager to raise or cut pay (UC11)"""
     if request.method == 'POST':
@@ -113,7 +121,7 @@ def promote_demote_view(request, employee_id, role, action):
 
 
 # --- UC 10: Process Kicked/Quit Customers ---
-@user_passes_test(is_manager)
+#@user_passes_test(is_manager)
 def close_customer_account_view(request, customer_id):
     """
     Handles closing a customer account (Quitting or Kicked Out).
@@ -165,3 +173,73 @@ def dashboard_view(request):
         'pending_feedback': pending_feedback,
     }
     return render(request, 'hr/manager_dashboard.html', context)
+
+#UC2: Manager registers new customers
+@staff_member_required
+def pending_registrations_view(request):
+    pending = RegistrationApproval.objects.filter(
+        status=RegistrationApproval.STATUS_PENDING
+    ).order_by("created_at")
+    return render(request, "hr/pending_registrations.html", {"pending": pending})
+
+
+@staff_member_required
+def approve_registration_view(request, pk):
+    req = RegistrationApproval.objects.filter(pk=pk).first()
+    if not req or req.status != RegistrationApproval.STATUS_PENDING:
+        messages.error(request, "Registration request not found or not pending.")
+        return redirect("pending_registrations")
+
+    # still blacklisted
+    if Customer.objects.filter(username=req.username, is_blacklisted=True).exists():
+        req.status = RegistrationApproval.STATUS_REJECTED
+        req.rejection_reason = "User is blacklisted."
+        req.processed_at = timezone.now()
+        req.save()
+        messages.error(request, "Applicant is blacklisted and cannot be approved.")
+        return redirect("pending_registrations")
+
+    # username conflict
+    if Customer.objects.filter(username=req.username).exists():
+        req.status = RegistrationApproval.STATUS_REJECTED
+        req.rejection_reason = "Username already taken."
+        req.processed_at = timezone.now()
+        req.save()
+        messages.error(request, "Username already exists.")
+        return redirect("pending_registrations")
+
+    # create Customer (using AbstractUser)
+    user = Customer(username=req.username)
+    user.set_password(req.password)
+    user.save()
+
+    # optional:
+    # user.address = req.address
+    # user.save()
+
+    req.status = RegistrationApproval.STATUS_APPROVED
+    req.processed_at = timezone.now()
+    req.save()
+
+    messages.success(request, f"Customer '{user.username}' created and approved.")
+    return redirect("pending_registrations")
+
+
+@staff_member_required
+def reject_registration_view(request, pk):
+    req = RegistrationApproval.objects.filter(pk=pk).first()
+    if not req or req.status != RegistrationApproval.STATUS_PENDING:
+        messages.error(request, "Registration request not found or not pending.")
+        return redirect("pending_registrations")
+
+    if request.method == "POST":
+        reason = request.POST.get("reason", "")
+        req.status = RegistrationApproval.STATUS_REJECTED
+        req.rejection_reason = reason
+        req.processed_at = timezone.now()
+        req.save()
+        messages.success(request, "Registration request rejected.")
+        return redirect("pending_registrations")
+
+    return render(request, "hr/reject_registration.html", {"req": req})
+
