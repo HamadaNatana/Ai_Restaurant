@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Hire Employee</title>
+</head>
+<body style="font-family: sans-serif; padding: 40px;">
+    <h1>Hire New Employee</h1>
+    <form method="POST">
+        {% csrf_token %}
+        <label>Role:</label>
+        <select name="role">
+            <option value="chef">Chef</option>
+            <option value="driver">Delivery Driver</option>
+        </select>
+        <br><br>
+        <label>Username:</label>
+        <input type="text" name="username" required>
+        <br><br>
+        <label>Password:</label>
+        <input type="password" name="password" required>
+        <br><br>
+        <label>Starting Salary:</label>
+        <input type="number" name="salary" required>
+        <br><br>
+        <button type="submit" style="background-color: #28a745; color: white; padding: 10px 20px; border: none;">Hire User</button>
+    </form>
+</body>
+</html>
