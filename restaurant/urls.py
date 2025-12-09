@@ -24,4 +24,7 @@ urlpatterns = [
     path('reputation/', include('reputation.urls')),
     path('hr/', include('hr.urls')),
 
+    path('reputation/', include('reputation.urls')),
+    path('hr/', include('hr.urls')),
+    
 ]
