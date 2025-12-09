@@ -46,7 +46,7 @@ def fire_employee_view(request, employee_id, role):
         employee = get_object_or_404(Driver, pk=employee_id)
         
     # Logic: Set status to fired and deactivate login
-    employee.status = 'fired'
+    employee.is_active = False
     employee.user.is_active = False # Prevents login
     employee.save()
     employee.user.save()
@@ -151,9 +151,12 @@ def dashboard_view(request):
     """
     Renders the Manager Dashboard with all necessary data.
     """
-    # Fetch Data for the Dashboard
-    chefs = Chef.objects.filter(status='active')
-    drivers = Driver.objects.exclude(status='fired')
+    # FIX: Use 'is_active' instead of 'status' based on your error message
+    chefs = Chef.objects.filter(is_active=True)
+    
+    # Assuming Driver likely follows the same pattern:
+    drivers = Driver.objects.filter(is_active=True)
+    
     pending_feedback = Feedback.objects.filter(status='pending')
     
     context = {
