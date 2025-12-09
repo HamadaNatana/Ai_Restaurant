@@ -10,20 +10,22 @@ import streamlit as st
 # -------------------------------------------------
 # Paths & data files
 # -------------------------------------------------
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent  # ai_assist/
 DATA_DIR = BASE_DIR / "data"
 DATA_DIR.mkdir(exist_ok=True)
 
 KB_CSV = DATA_DIR / "knowledge_base.csv"
 KB_FLAGS_CSV = DATA_DIR / "kb_flags.csv"
+AI_RATINGS_CSV = DATA_DIR / "ai_ratings.csv"
 
 # -------------------------------------------------
 # Env & Hugging Face config
 # -------------------------------------------------
-load_dotenv(BASE_DIR / ".env") 
+load_dotenv(BASE_DIR / ".env")
 
 HF_API_TOKEN = os.getenv("HF_API_TOKEN")
-HF_MODEL = "TinyLlama/TinyLlama-1.1B-Chat-v1.0" # changable models
+# You can change this to another model if you get access later
+HF_MODEL = "gpt2"
 HF_API_URL = f"https://api-inference.huggingface.co/models/{HF_MODEL}"
 
 
@@ -32,7 +34,7 @@ def now_str() -> str:
 
 
 # -------------------------------------------------
-# Local Knowledge Base (UC20 part 1)
+# Local Knowledge Base (UC20 – part 1)
 # -------------------------------------------------
 def load_knowledge_base():
     """Return list of dict rows from local KB CSV."""
@@ -42,17 +44,17 @@ def load_knowledge_base():
 
     with open(KB_CSV, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
-        for row in reader:
-            items.append(row)
+        items.extend(reader)
     return items
 
 
 def find_local_answer(question: str):
     """
-    Fuzzy match based on SRS idea:
-    - make both lower-case
-    - strip trailing '?'
-    - match if stored question is substring of user question or vice versa
+    Simple fuzzy match:
+    - lowercase
+    - strip '?'
+    - match if stored question is substring of user q or vice versa
+    Returns the KB row or None.
     """
     q = question.lower().strip().strip("?")
     if not q:
@@ -61,13 +63,13 @@ def find_local_answer(question: str):
     for row in load_knowledge_base():
         kbq = row["question"].lower().strip().strip("?")
         if kbq and (kbq in q or q in kbq):
-            return row  # includes kb_id, question, answer
+            return row
     return None
 
 
 def append_kb_flag(kb_id: str, flagged_by: str, rating: int, comment: str):
     """
-    UC21 – store a 0 rating (outrageous) for manager review in kb_flags.csv.
+    UC21 – store rating 0 ("outrageous") for manager review.
     """
     exists = KB_FLAGS_CSV.exists()
     with open(KB_FLAGS_CSV, "a", newline="", encoding="utf-8") as f:
@@ -75,7 +77,6 @@ def append_kb_flag(kb_id: str, flagged_by: str, rating: int, comment: str):
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         if not exists:
             writer.writeheader()
-
         writer.writerow(
             {
                 "kb_id": kb_id,
@@ -87,8 +88,42 @@ def append_kb_flag(kb_id: str, flagged_by: str, rating: int, comment: str):
         )
 
 
+def append_ai_rating(username: str, source: str, kb_id, question: str,
+                     answer: str, rating: int, comment: str):
+    """
+    UC21 – log every rating (for both KB + LLM answers) into ai_ratings.csv.
+    """
+    exists = AI_RATINGS_CSV.exists()
+    with open(AI_RATINGS_CSV, "a", newline="", encoding="utf-8") as f:
+        fieldnames = [
+            "username",
+            "source",        # "kb" or "llm"
+            "kb_id",         # may be None/"" for llm answers
+            "question",
+            "answer",
+            "rating",
+            "comment",
+            "created_at",
+        ]
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        if not exists:
+            writer.writeheader()
+        writer.writerow(
+            {
+                "username": username,
+                "source": source,
+                "kb_id": kb_id or "",
+                "question": question,
+                "answer": answer,
+                "rating": rating,
+                "comment": comment,
+                "created_at": now_str(),
+            }
+        )
+
+
 # -------------------------------------------------
-# Hugging Face LLM (UC20 fallback)
+# Hugging Face LLM (UC20 – fallback)
 # -------------------------------------------------
 def build_hf_prompt(question: str, history: list[dict]):
     """
@@ -131,10 +166,16 @@ If you are unsure, say you don't know and ask the user to contact the manager.
 
 def hf_chat(question: str, history: list[dict]) -> str:
     """
-    Call Hugging Face text-generation endpoint.
+    Call Hugging Face Inference API.
+
+    If HF returns an error (like 410), we *hide* the ugly error from the user
+    and show the UC20-friendly "AI unavailable" message instead.
     """
     if not HF_API_TOKEN:
-        return "(HF_API_TOKEN is not set. Put it in your .env file.)"
+        return (
+            "The external AI service is not configured. "
+            "Please contact the manager or system administrator."
+        )
 
     headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
     payload = {
@@ -162,26 +203,30 @@ def hf_chat(question: str, history: list[dict]) -> str:
 
         return answer or "(The AI did not return any content.)"
 
-    except Exception as e:
-        return f"(Hugging Face error: {e})"
+    except Exception:
+        # For you (developer) – you can log the real error in terminal if needed
+        # print("Hugging Face error:", e)
+        # For the user – UC20 exceptional flow: LLM unavailable
+        return (
+            "Sorry, the external AI service is currently unavailable. "
+            "Please try again later or contact the manager."
+        )
 
 
 # -------------------------------------------------
 # Session helpers for chat state
 # -------------------------------------------------
 def init_session():
-    # User identity from global app
+    # user identity (would normally come from UC03 login)
     if "username" not in st.session_state:
         st.session_state.username = "demo_customer"
     if "role" not in st.session_state:
         st.session_state.role = "CUSTOMER"
 
     if "messages" not in st.session_state:
-        st.session_state.messages = []  # list of {role, content, source}
-    if "last_source" not in st.session_state:
-        st.session_state.last_source = None  # "kb" or "llm"
-    if "last_kb_id" not in st.session_state:
-        st.session_state.last_kb_id = None
+        st.session_state.messages = []  # list[{role, content, source}]
+    if "last_answer" not in st.session_state:
+        st.session_state.last_answer = None  # {"question","answer","source","kb_id"}
 
 
 def add_message(role: str, content: str, source: str | None = None):
@@ -199,8 +244,8 @@ def render_header():
         <div style="background-color:#111827;padding:10px 16px;border-radius:0 0 8px 8px;">
             <h2 style="color:white;margin:0;">AI Customer Service Chat</h2>
             <p style="color:#9ca3af;margin:2px 0 0 0;font-size:13px;">
-                UC20 – Local KB first, then LLM fallback &nbsp;&nbsp;|&nbsp;&nbsp;
-                UC21 – Rating with 0-star flagging
+                UC20 – Local KB first, then external AI fallback &nbsp;&nbsp;|&nbsp;&nbsp;
+                UC21 – Rating every answer (0–5) with 0-star flagging for KB replies
             </p>
         </div>
         """,
@@ -208,9 +253,10 @@ def render_header():
     )
 
 
-def render_chat():
-    st.markdown("### Chat")
+def render_chat_panel():
+    st.markdown("### Conversation")
 
+    # past messages
     for msg in st.session_state.messages:
         if msg["role"] == "user":
             with st.chat_message("user"):
@@ -226,72 +272,88 @@ def render_chat():
                 st.markdown(f"**{label}:**")
                 st.write(msg["content"])
 
+    # input
     user_input = st.chat_input(
         "Ask a question about menu, VIP, deposits, warnings, delivery, or allergies..."
     )
     if user_input:
         handle_user_question(user_input)
+        # make first question+answer visible immediately
+        st.rerun()
 
 
 def handle_user_question(question: str):
+    # store the user message
     add_message("user", question, None)
 
+    # 1) Try local KB
     kb_row = find_local_answer(question)
-
     if kb_row:
         answer_text = kb_row["answer"]
-        add_message("assistant", answer_text, "kb")
-        st.session_state.last_source = "kb"
-        st.session_state.last_kb_id = kb_row["kb_id"]
+        source = "kb"
+        kb_id = kb_row.get("kb_id")
     else:
+        # 2) Fallback to HF LLM (may return "AI unavailable" text if HF fails)
         history = st.session_state.messages
         answer_text = hf_chat(question, history)
-        add_message("assistant", answer_text, "llm")
-        st.session_state.last_source = "llm"
-        st.session_state.last_kb_id = None
+        source = "llm"
+        kb_id = None
+
+    add_message("assistant", answer_text, source)
+    st.session_state.last_answer = {
+        "question": question,
+        "answer": answer_text,
+        "source": source,
+        "kb_id": kb_id,
+    }
 
 
-def render_rating():
-    st.markdown("### Rate the Last Local Answer")
+def render_rating_panel():
+    st.markdown("### Rate the Last Answer")
 
-    if st.session_state.last_source != "kb":
-        st.info(
-            "The last answer did **not** come from the local knowledge base. "
-            "Ratings are only stored for local KB answers."
-        )
+    last = st.session_state.last_answer
+    if not last:
+        st.info("Ask a question first, then you can rate the AI's answer here.")
         return
 
-    kb_id = st.session_state.last_kb_id
-    if not kb_id:
-        st.info("No local KB answer is currently selected for rating.")
-        return
+    source_label = "Local Knowledge Base" if last["source"] == "kb" else "External LLM"
+    st.write(f"**Answer source:** {source_label}")
 
-    st.write(
-        "Please rate the **most recent local knowledge base answer** "
-        "from 0 to 5 stars. Rating **0** will flag it as 'outrageous' "
-        "for the manager to review."
-    )
+    with st.expander("Preview last answer", expanded=False):
+        st.markdown(f"> {last['answer']}")
 
-    rating = st.slider("Rating", min_value=0, max_value=5, value=5, step=1)
+    rating = st.slider("Rating (0–5 stars)", min_value=0, max_value=5, value=5, step=1)
     comment = st.text_input(
-        "Optional comment for the manager (especially if rating is 0):", value=""
+        "Optional comment (especially useful if you select 0):",
+        value="",
+        key="rating_comment",
     )
 
     if st.button("Submit Rating"):
         username = st.session_state.username or "anonymous"
+        append_ai_rating(
+            username=username,
+            source=last["source"],
+            kb_id=last["kb_id"],
+            question=last["question"],
+            answer=last["answer"],
+            rating=rating,
+            comment=comment,
+        )
 
-        if rating == 0:
+        # If rating 0 AND source is KB → flag for manager review
+        if rating == 0 and last["source"] == "kb" and last["kb_id"]:
             append_kb_flag(
-                kb_id=kb_id,
+                kb_id=last["kb_id"],
                 flagged_by=username,
                 rating=rating,
                 comment=comment or "Flagged as outrageous by user.",
             )
             st.success(
-                "This local answer was rated 0 and flagged for the manager to review."
+                "Rating saved. This local KB answer was rated 0 and flagged for manager review."
             )
         else:
-            st.success(f"Thank you! You rated this local answer {rating}/5.")
+            st.success("Thank you! Your rating has been saved.")
 
 
 def main():
@@ -305,18 +367,35 @@ def main():
 
     col1, col2 = st.columns([2, 1])
     with col1:
-        render_chat()
+        render_chat_panel()
+
     with col2:
         st.markdown("#### User Info")
         st.write(f"**Username:** {st.session_state.username}")
         st.write(f"**Role:** {st.session_state.role}")
         st.markdown("---")
-        render_rating()
+        render_rating_panel()
+
+        # Debug info – you can remove for final submission
+        st.markdown("---")
+        st.markdown("#### Debug Info (temporary)")
+        st.write(f"HF Token Loaded: {HF_API_TOKEN is not None}")
+        st.write(f"Model Selected: {HF_MODEL}")
+        st.write(f"API URL: {HF_API_URL}")
+
+        st.markdown("---")
+        st.info(
+            "Design notes:\n"
+            "- UC20: Local KB is used first; if no match, an external LLM is called.\n"
+            "- UC21: Every answer can be rated 0–5; rating 0 on a **local KB** answer "
+            "also flags it for manager review (kb_flags.csv)."
+        )
 
     st.markdown("---")
     st.caption(
-        "Implements UC20 and UC21: local KB lookup, LLM fallback, and 0–5 rating with 0 as a manager flag."
+        "Implements UC20 & UC21: hybrid local + LLM chat, plus rating and flagging."
     )
+
 
 if __name__ == "__main__":
     main()

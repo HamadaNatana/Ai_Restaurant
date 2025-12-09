@@ -1,2 +1,6 @@
 rating_id,kb_id,user,stars,created_at
 c8745e3f-5cf1-4566-b081-59ce2f8fae22,1,demo_customer,4,2025-12-08 15:25:47
+1,demo_customer,4,,2025-12-09 01:13:30
+1,demo_customer,3,,2025-12-09 01:13:56
+1,demo_customer,0,,2025-12-09 01:14:01
+2025-12-09 01:39:33,demo_customer,llm,,0,
