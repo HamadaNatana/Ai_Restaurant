@@ -36,4 +36,4 @@ class KBModeration(TimeStampedModel):
     moderation_id = models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     manager_id = models.ForeignKey(Manager, on_delete=models.PROTECT)
     flag_id = models.ForeignKey(KBFlag,on_delete=models.PROTECT)
-    action = models.CharField()
+    action = models.CharField(max_length=100)
