@@ -1,4 +1,3 @@
-import uuid
 from django.db import models
 from common.models import TimeStampedModel
 from accounts.models import Customer, Manager
@@ -10,7 +9,6 @@ class KBEntry(TimeStampedModel):
     """
     Local knowledge base entry (UC20).
     """
-    kb_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     question = models.CharField(max_length=255)
     answer = models.TextField()
     active = models.BooleanField(default=True)
@@ -27,7 +25,6 @@ class AIAnswer(TimeStampedModel):
     Stored answers from either KB or external LLM (UC20).
     Used for rating (UC21).
     """
-    ai_answer_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     # Link to KBEntry if source was KB; else null (LLM)
     kb_id = models.ForeignKey(
@@ -55,7 +52,6 @@ class AIRating(TimeStampedModel):
     Users rate any AIAnswer from UC20 (UC21).
     Rating = 0 triggers manager review.
     """
-    ai_rating_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     customer_id = models.ForeignKey(
         Customer,
@@ -82,7 +78,6 @@ class KBFlag(TimeStampedModel):
     Rating 0 on a KB answer creates a flag (UC21).
     Reviewed later by manager (UC21 continued).
     """
-    flag_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     customer_id = models.ForeignKey(
         Customer,
@@ -104,7 +99,6 @@ class KBModeration(TimeStampedModel):
     """
     Manager’s moderation record of flagged KB entries.
     """
-    moderation_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     manager_id = models.ForeignKey(Manager, on_delete=models.PROTECT)
     flag_id = models.ForeignKey(KBFlag, on_delete=models.PROTECT)

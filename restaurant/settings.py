@@ -50,7 +50,7 @@ INSTALLED_APPS = [
     'reputation',
 ]
 
-AUTH_USER_MODEL = 'accounts.Customer'
+AUTH_USER_MODEL = 'common.User'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',

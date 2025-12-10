@@ -1,129 +1,37 @@
-"""
-AI Restaurant - Main Streamlit Application
-Links all pages and handles the main navigation logic.
-"""
-
 import streamlit as st
-import requests
-from utils.session import init_session, logout, is_chef, is_vip
-from pages import menu_page, cart_pages, chef_dishes_pages # Import pages module
+import os
+import django
+import sys
 
-# Initialize session state variables
-init_session()
+# 1. SETUP DJANGO (Crucial: This connects Streamlit to your Database)
+# Add project root to system path so we can import 'restaurant'
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'restaurant.settings')
+django.setup()
 
-# Page config
+# 2. PAGE CONFIG
 st.set_page_config(
-    page_title="AI Restaurant",
+    page_title="AI Restaurant System",
     page_icon="🍽️",
     layout="wide"
 )
 
-# --- Sidebar Content ---
-with st.sidebar:
-    st.title("🍽️ AI Restaurant")
-    st.markdown("---")
-    
-    if not st.session_state.logged_in:
-        # Login Form (UC03)
-        st.subheader("Login")
-        with st.form("login_form"):
-            username = st.text_input("Username")
-            password = st.text_input("Password", type="password")
-            submit = st.form_submit_button("Login", use_container_width=True, type="primary")
+# 3. WELCOME SCREEN
+st.title("🍽️ AI-Enabled Restaurant System")
+st.image("https://cdn.dribbble.com/users/1012566/screenshots/4187820/media/985748436085f06bb2bd63686ff491a5.jpg", use_column_width=True)
 
-            if submit:
-                if not username or not password:
-                    st.error("Please enter username and password.")
-                else:
-                    try:
-                        # Direct call to the expected authentication endpoint
-                        resp = requests.post(
-                            "http://localhost:8000/api/users/login/", # Adjusted to common user login path
-                            json={"username": username, "password": password},
-                            timeout=10
-                        )
-                        
-                        if resp.status_code == 200:
-                            data = resp.json()
-                            
-                            # Store user data (UC03 Postconditions)
-                            st.session_state.logged_in = True
-                            st.session_state.user = data.get('user', data)
-                            
-                            if 'customer' in data:
-                                st.session_state.customer = data['customer']
-                            
-                            if 'chef' in data:
-                                st.session_state.chef = data['chef']
-                                
-                            st.success("Login successful!")
-                            st.rerun()
-                        else:
-                            error_data = resp.json() if resp.content else {}
-                            error_msg = error_data.get('error', error_data.get('detail', 'Invalid credentials'))
-                            st.error(f"Login Failed: {error_msg}")
-                            
-                    except requests.exceptions.ConnectionError:
-                        st.error("Cannot connect to server. Is the backend running?")
-                    except requests.exceptions.Timeout:
-                        st.error("Request timed out.")
-                    except Exception as e:
-                        st.error(f"Error: {str(e)}")
-        
-        st.markdown("---")
-        st.caption("Don't have an account? Contact management.")
-        
-    else:
-        # Logged In User Info
-        user = st.session_state.user or {}
-        username = user.get('username', 'User')
-        user_type = user.get('user_type', 'customer')
-        
-        st.success(f"Welcome, {username}!")
-        st.caption(f"Role: {user_type.title()}")
-        
-        if st.session_state.customer:
-            balance = st.session_state.customer.get('balance', 0)
-            st.info(f"Balance: **${float(balance):.2f}**")
-            if is_vip():
-                st.success("VIP Member")
-        
-        st.markdown("---")
-        
-        # Logout
-        if st.button("Logout", use_container_width=True):
-            logout()
-            st.rerun()
-        
-        st.markdown("---")
+st.markdown("""
+### Welcome to the Future of Dining
+Select a module from the **sidebar** to begin:
 
-    # --- Navigation ---
-    st.subheader("Navigation")
-    page_options = ["Menu"]
-    
-    if st.session_state.logged_in:
-        page_options.append("Cart")
-    
-    # Add 'My Dishes' only for Chefs (UC19)
-    if is_chef():
-        page_options.append("My Dishes")
-        
-    # Set choice to the last visited page, defaulting to "Menu"
-    if 'current_page' not in st.session_state or st.session_state.current_page not in page_options:
-        st.session_state.current_page = "Menu"
+* **🍔 Menu & Order**: Browse dishes, filter by allergy, and checkout (VIP discounts applied!).
+* **🤖 AI Assistant**: Chat with our smart bot about hours, vegan options, or policies.
+* **👔 Manager Portal**: Manage staff, resolve disputes, and oversee the kitchen.
+* **🚚 Driver Portal**: Bid on delivery jobs and track orders.
+""")
 
-    choice = st.radio("Go to", page_options, label_visibility="collapsed", index=page_options.index(st.session_state.current_page))
-    st.session_state.current_page = choice
-
-# --- Main Content Area ---
-
-if st.session_state.current_page == "Menu":
-    menu_page.render_menu_page()
-elif st.session_state.current_page == "Cart":
-    cart_pages.render_cart_page()
-elif st.session_state.current_page == "My Dishes":
-    chef_dishes_pages.render_chef_dishes_page()
-
-# --- Footer ---
-st.markdown("---")
-st.caption("AI Restaurant Management System | Menu, Ordering, and Dish Management.")
+# 4. SESSION STATE INIT (Global Variables)
+if 'cart' not in st.session_state:
+    st.session_state.cart = []
+if 'user_role' not in st.session_state:
+    st.session_state.user_role = 'Guest'

@@ -1,4 +1,3 @@
-import uuid
 from django.db import models
 from django.conf import settings
 from common.models import TimeStampedModel
@@ -27,11 +26,13 @@ class Feedback(TimeStampedModel):
     STATUS_KEPT = 'kept'
     STATUS_PENDING = 'pending'
     STATUS_DISMISSED = 'dismissed'
+    STATUS_CANCELLED = 'cancelled'
 
     STATUS_CHOICES = [
         (STATUS_KEPT,'kept'),
         (STATUS_PENDING,'pending'),
-        (STATUS_DISMISSED,'dismissed')
+        (STATUS_DISMISSED,'dismissed'),
+        (STATUS_CANCELLED, 'cancelled')
     ]
 
     filer_customer_id = models.ForeignKey(Customer, null=True, blank=True, on_delete=models.CASCADE, related_name="feedback_filed")
@@ -42,12 +43,10 @@ class Feedback(TimeStampedModel):
     target_chef_id = models.ForeignKey(Chef, null=True, blank=True, on_delete=models.CASCADE, related_name="feedback_received")
     target_dish_id = models.ForeignKey(Dish, null=True, blank=True, on_delete=models.CASCADE, related_name="feedback_about")
 
-    feedback_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     is_compliment = models.BooleanField(default=False) # False → Complaint / True → Compliment
     weight = models.PositiveIntegerField(default=1)  # VIP → 2
     message = models.TextField()
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_PENDING)
-    text = models.TextField()
 
 class Dispute(models.Model):
     complaint = models.ForeignKey(Feedback, on_delete=models.CASCADE, related_name='disputes')
@@ -65,15 +64,13 @@ class FeedbackDecision(TimeStampedModel):
 
 
 class FoodRating(TimeStampedModel):
-    food_rating_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    customer_id = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name="food_ratings")
-    dish_id = models.ForeignKey(Dish, on_delete=models.CASCADE, related_name="ratings")
-    order_id = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="food_ratings")
+    customer_id = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name="food_ratings")
+    dish_id = models.ForeignKey(Dish, on_delete=models.PROTECT, related_name="ratings")
+    order_id = models.ForeignKey(Order, on_delete=models.PROTECT, related_name="food_ratings")
     stars = models.PositiveSmallIntegerField()  # 1–5
 
 class DeliveryRating(TimeStampedModel):
-    delivery_rating_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    customer_id = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name="delivery_ratings")
-    driver_id = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name="ratings")
-    order_id = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="delivery_ratings")
+    customer_id = models.ForeignKey(Customer, on_delete=models.PROTECT, related_name="delivery_ratings")
+    driver_id = models.ForeignKey(Driver, on_delete=models.PROTECT, related_name="ratings")
+    order_id = models.ForeignKey(Order, on_delete=models.PROTECT, related_name="delivery_ratings")
     stars = models.PositiveSmallIntegerField()

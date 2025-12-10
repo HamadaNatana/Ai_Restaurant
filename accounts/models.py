@@ -1,17 +1,15 @@
-import uuid
-from django.contrib.auth.models import AbstractUser, Group
 from django.conf import settings
 from django.db import models
 from common.models import TimeStampedModel
 
-class Customer(AbstractUser, TimeStampedModel):
+class Customer(TimeStampedModel):
     STATUS_REGISTERED = "registered"
     STATUS_VIP = "vip"
     STATUS_CHOICES = [
         (STATUS_REGISTERED, "Registered"),
         (STATUS_VIP, "VIP"),
     ]
-    customer_id = models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, unique=True)
     address = models.TextField(unique=True)
     is_blacklisted = models.BooleanField(default=False)
     warnings = models.PositiveIntegerField(default=0)
@@ -43,5 +41,4 @@ class Customer(AbstractUser, TimeStampedModel):
             self.save()
 
 class Manager(TimeStampedModel):
-    manager_id = models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
-    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,unique=True)

@@ -1,4 +1,3 @@
-import uuid
 from django.db import models
 from common.models import TimeStampedModel
 from menu.models import Chef
@@ -14,7 +13,6 @@ class RegistrationApproval(TimeStampedModel):
         (STATUS_APPROVED, "Approved"),
         (STATUS_REJECTED, "Rejected"),
     ]
-    approval_id = models.UUIDField(primary_key=True,default=uuid.uuid4,editable=False)
     manager_id = models.ForeignKey(Manager,on_delete=models.PROTECT)
     username = models.CharField(max_length=150)
     password_hash = models.CharField(max_length=255)
@@ -50,8 +48,7 @@ class HRAction(TimeStampedModel):
         (ACTION_BLACKLIST, "Blacklist Customer"),
     ]
 
-    hr_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    manager_id = models.ForeignKey(Manager, on_delete=models.SET_NULL, null=True, related_name="hr_actions")
+    manager_id = models.ForeignKey(Manager, on_delete=models.PROTECT, related_name="hr_actions")
     actor_type = models.CharField(max_length=20, choices=ACTOR_TYPE_CHOICES)
 
     chef_id = models.ForeignKey(Chef, null=True, blank=True, on_delete=models.CASCADE)

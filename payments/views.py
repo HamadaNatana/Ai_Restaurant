@@ -1,40 +1,55 @@
-from django.shortcuts import render, redirect
-from django.contrib import messages
-from django.contrib.auth.decorators import login_required
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.permissions import IsAuthenticated
 from .models import Transactions
-from accounts.models import Customer
-# UC8: Customer deposits money into acount
-@login_required
-def deposit_view(request):
-    if request.method == "POST":
-        amount = request.POST.get("amount")
+from accounts.models import Customer 
+class DepositAPIView(APIView):
+    #UC8: Customer deposits money into account via API request (from Streamlit).
+    permission_classes = [IsAuthenticated] 
 
-        # Validate input
+    def post(self, request):
+        # 1. Get amount from JSON request body
+        amount = request.data.get("amount")
+        
+        # 2. Validation
         try:
-            amount = float(amount)
-        except:
-            messages.error(request, "Invalid amount.")
-            return render(request, "payments/deposit.html")
+            # We use float() here for validation, but may use Decimal() for real money
+            amount = float(amount) 
+        except (ValueError, TypeError):
+            return Response({"error": "Invalid amount type or missing."}, 
+                            status=status.HTTP_400_BAD_REQUEST)
 
+        # Business rules
         if amount <= 0:
-            messages.error(request, "Deposit amount must be positive.")
-            return render(request, "payments/deposit.html")
+            return Response({"error": "Deposit amount must be positive."}, 
+                            status=status.HTTP_400_BAD_REQUEST)
         
         if amount >= 100000:
-            messages.error(request, "Deposit amount is too excessive")
-            return render(request, "payments/deposit.html")
+            return Response({"error": "Deposit amount is too excessive."}, 
+                            status=status.HTTP_400_BAD_REQUEST)
 
-        customer: Customer = request.user
+        # 3. Process Transaction
+        # Get the Customer object related to the authenticated user (One-to-One connection confirmed)
+        try:
+            customer: Customer = request.user.customer
+        except Customer.DoesNotExist:
+            return Response({"error": "Customer profile not found."}, 
+                            status=status.HTTP_404_NOT_FOUND)
+
+        # Update balance
         customer.balance += amount
         customer.save()
 
+        # Create Transaction record
         Transactions.objects.create(
             customer=customer,
             type=Transactions.TYPE_DEPOSIT,
             amount=amount,
         )
 
-        messages.success(request, f"Deposit successful! Your new balance is ${customer.balance}.")
-        return redirect("deposit")
-
-    return render(request, "payments/deposit.html")
+        # 4. Success Response
+        return Response({
+            "message": "Deposit successful! Your new balance is.",
+            "new_balance": customer.balance,
+        }, status=status.HTTP_200_OK)

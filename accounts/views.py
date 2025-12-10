@@ -1,76 +1,94 @@
-from django.shortcuts import render, redirect
-from django.contrib import messages
-from django.contrib.auth import login
+from django.contrib.auth.hashers import make_password
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework import viewsets
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import action
 from hr.models import RegistrationApproval
-from .forms import CustomerLoginForm
 from .models import Customer
+from .serializers import CustomerSerializer
+from django.contrib.auth import authenticate 
 
-# UC1: Visitor registers to become a customer
-def register_view(request):
-    if request.method == "POST":
-        username = request.POST.get("username")
-        password = request.POST.get("password")
-        address = request.POST.get("address", "")
+class CustomerViewSet(viewsets.ModelViewSet):
+    queryset = Customer.objects.all()
+    serializer_class = CustomerSerializer
+    permission_classes = [IsAuthenticated]
 
-        # basic validation
+    @action(detail=False, methods=['get'])
+    def me(self, request):
+        # Assumes the User model has a related object named 'customer'
+        customer = request.user.customer 
+        serializer = self.get_serializer(customer)
+        return Response(serializer.data)
+
+class RegistrationAPIView(APIView):
+    permission_classes = () # Allow unauthenticated access
+    
+    def post(self, request):
+        username = request.data.get("username")
+        password = request.data.get("password")
+        address = request.data.get("address", "")
+
+        # 1. Basic validation
         if not username or not password:
-            messages.error(request, "Username and password are required.")
-            return render(request, "accounts/register.html")
+            return Response(
+                {"error": "Username and password are required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        # blacklisted
+        # 2. Business/Security validation
         if Customer.objects.filter(username=username, is_blacklisted=True).exists():
-            messages.error(request, "This account has been blocked and cannot register again.")
-            return render(request, "accounts/register.html")
+            return Response({"error": "This account has been blocked."}, status=status.HTTP_403_FORBIDDEN)
 
-        # username already used
         if Customer.objects.filter(username=username).exists():
-            messages.error(request, "This username is already in use.")
-            return render(request, "accounts/register.html")
+            return Response({"error": "This username is already in use."}, status=status.HTTP_409_CONFLICT)
 
-        # pending registration exists
-        if RegistrationApproval.objects.filter(
-            username=username,
-            status=RegistrationApproval.STATUS_PENDING
-        ).exists():
-            messages.error(request, "There is already a pending registration for this username.")
-            return render(request, "accounts/register.html")
+        if RegistrationApproval.objects.filter(username=username, status=RegistrationApproval.STATUS_PENDING).exists():
+            return Response({"error": "There is already a pending registration."}, status=status.HTTP_409_CONFLICT)
 
+        # 3. Securely create the approval record
+        hashed_password = make_password(password)
         RegistrationApproval.objects.create(
             username=username,
-            password_hash=password,   
+            password_hash=hashed_password,   
             address=address,
+            status=RegistrationApproval.STATUS_PENDING
         )
 
-        messages.success(request, "Registration request submitted. A manager must approve it.")
-        return redirect("login")
+        return Response(
+            {"message": "Registration request submitted. A manager must approve it."},
+            status=status.HTTP_202_ACCEPTED
+        )
 
-    return render(request, "accounts/register.html")
+class LoginAPIView(APIView):
+    permission_classes = () 
 
-# UC3: Customer logs into their account
-def login_view(request):
-    if request.method == "POST":
-        form = CustomerLoginForm(request, data=request.POST)
-        if form.is_valid():
-            user = form.get_user()
+    def post(self, request):
+        username = request.data.get('username')
+        password = request.data.get('password')
 
-            # check blacklist
+        user = authenticate(username=username, password=password)
+
+        if user is not None:
+            # Check blacklist (UC3 logic)
             if user.is_blacklisted:
-                messages.error(request, "Your account has been blocked and cannot log in.")
-                return render(request, "accounts/login.html", {"form": form})
+                return Response({"error": "Your account has been blocked."}, status=status.HTTP_403_FORBIDDEN)
+            
+            customer = user.customer # Assuming 1:1 relation to Customer model
 
-            login(request, user)
+            # Build warning info (UC15 logic)
+            warning_msg = build_warning_message(customer)
 
-            # Build warning info (UC15)
-            warning_msg = build_warning_message(user)
-            if warning_msg:
-                messages.warning(request, warning_msg)
-
-            messages.success(request, f"Welcome back, {user.username}!")
-            return redirect("home")  # change to dashboard/home url name
-    else:
-        form = CustomerLoginForm(request)
-
-    return render(request, "accounts/login.html", {"form": form})
+            # NOTE: You must replace this placeholder with actual token generation code 
+            # (e.g., Simple JWT's token_obtain_pair view logic)
+            return Response({
+                "token": "YOUR_GENERATED_JWT_TOKEN", 
+                "username": user.username,
+                "warning_message": warning_msg
+            })
+        else:
+            return Response({"error": "Invalid Credentials"}, status=status.HTTP_401_UNAUTHORIZED)
 
 # UC15: Customer views their accumilated warnings when they log in
 def build_warning_message(customer: Customer) -> str | None:

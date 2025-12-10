@@ -113,6 +113,15 @@ def view_bids(request, order_id):
 # --------------------------------------------------------------------
 @login_required
 def assign_driver(request, order_id, driver_id):
+    
+    # ... inside assign_driver, after OrderAssignment.objects.create(...)
+
+    # UPDATE THE MAIN ORDER STATUS
+    order.status = 'delivering' # Or 'assigned' based on Order model choices
+    order.save()
+
+    return redirect('manager_dashboard')
+    
     """Manager assigns a driver to an order."""
     if not hasattr(request.user, "manager"):
         return HttpResponseForbidden("You are not a manager.")

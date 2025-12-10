@@ -2,9 +2,13 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
-    # UC 12: The form action for submitting feedback
-    path('create/', views.create_feedback_view, name='create_feedback'),
+    # 1. Create Complaint/Compliment (Frontend uses this)
+    path('api/create/', views.create_feedback, name='create_feedback'),
     
-    # UC 13/14: The manager clicking "Accept" or "Dismiss" on a complaint
-    path('resolve/<uuid:feedback_id>/', views.resolve_feedback_view, name='resolve_feedback'),
+    # 2. Manager Dashboard: Get list of pending disputes
+    path('api/pending/', views.get_pending_feedback, name='get_pending_feedback'),
+    
+    # 3. Manager Action: Resolve a dispute (Accept/Dismiss)
+    # Uses uuid because your Feedback model uses UUIDField
+    path('api/resolve/<uuid:pk>/', views.resolve_feedback, name='resolve_feedback'),
 ]

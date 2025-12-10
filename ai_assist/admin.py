@@ -1,4 +1,5 @@
 from django.contrib import admin
+<<<<<<< HEAD
 from .models import (
     KBEntry, AIAnswer, AIRating, KBFlag, KBModeration,
     DiscussionTopic, DiscussionPost,
@@ -88,3 +89,12 @@ class AllergyPreferenceAdmin(admin.ModelAdmin):
     list_display = ("customer", "allergens", "created_at")
     search_fields = ("customer__username", "allergens")
     readonly_fields = ("created_at", "updated_at")
+=======
+from .models import KBEntry,KBFlag,KBModeration,AIAnswer,AIRating
+
+admin.site.register(KBEntry)
+admin.site.register(KBFlag)
+admin.site.register(KBModeration)
+admin.site.register(AIAnswer)
+admin.site.register(AIRating)
+>>>>>>> 848445be (Finalize the backend)
