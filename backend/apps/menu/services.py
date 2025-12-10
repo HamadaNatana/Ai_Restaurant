@@ -164,7 +164,7 @@ class MenuService:
         if not customer:
             return 'Visitor'
         
-        # Check if customer is VIP (you may need to adjust based on your Customer model)
+        # Check if customer is VIP (may need to adjust based on the Customer model)
         if hasattr(customer, 'is_vip') and customer.is_vip:
             return 'VIP'
         elif hasattr(customer, 'user_type'):
