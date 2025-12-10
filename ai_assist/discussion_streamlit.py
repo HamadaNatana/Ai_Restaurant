@@ -43,13 +43,20 @@ ROLE_MANAGER = "MANAGER"
 def resolve_logged_in_user():
     """
     Streamlit receives username + role from Django login redirect, ex:
-    http://localhost:8506/discussion?username=john&role=CUSTOMER
+        http://localhost:8506/discussion?username=john&role=CUSTOMER
+
+    st.query_params returns:
+        {"username": ["john"], "role": ["CUSTOMER"]}
+    so we must index [0].
     """
     qp = st.query_params
 
-    username = qp.get("username", None)
+    username = qp.get("username", [""])[0]
+    role_qp = qp.get("role", ["VISITOR"])[0] or ROLE_VISITOR
+
+    # If opened directly (no query params) → demo user
     if not username:
-        return None, ROLE_VISITOR
+        return "demo_customer", ROLE_CUSTOMER
 
     # Manager?
     if Manager.objects.filter(user__username=username).exists():
@@ -62,7 +69,7 @@ def resolve_logged_in_user():
             return username, ROLE_VIP
         return username, ROLE_CUSTOMER
 
-    # Not found
+    # Not found in DB → treat as visitor but keep username string
     return username, ROLE_VISITOR
 
 
@@ -77,10 +84,15 @@ def user_is_manager(role: str) -> bool:
 
 
 def get_customer_for_username(username: str) -> Optional[Customer]:
+    """
+    Map username → Customer.
+    Your Customer extends AbstractUser, so username is on Customer.
+    """
     try:
-        cust = Customer.objects.filter(user__username=username).first()
+        cust = Customer.objects.filter(username=username).first()
         if not cust:
-            cust = Customer.objects.filter(username=username).first()
+            # safety fallback if you ever attach a separate User
+            cust = Customer.objects.filter(user__username=username).first()
         return cust
     except Exception:
         return None
@@ -122,7 +134,7 @@ def main():
         layout="wide",
     )
 
-    # REAL login
+    # REAL login from Django query params
     username, role = resolve_logged_in_user()
 
     render_header()
@@ -175,8 +187,12 @@ def main():
             st.markdown("#### Start a New Topic")
             with st.form("new_topic_form"):
                 title = st.text_input("Title")
-                category = st.selectbox("Category", ["chef", "dish", "delivery", "general"], index=3)
-                topic_ref_id = st.text_input("Reference ID (optional)")
+                category = st.selectbox(
+                    "Category",
+                    ["chef", "dish", "delivery", "general"],
+                    index=3,
+                )
+                topic_ref_id = st.text_input("Reference ID (optional, e.g., dish or chef ID)")
                 opening_message = st.text_area("Opening message")
 
                 submitted = st.form_submit_button("Create Topic")
@@ -298,15 +314,18 @@ def main():
                         st.error("Reply cannot be empty.")
                     else:
                         author = get_customer_for_username(username)
-                        DiscussionPost.objects.create(
-                            topic=selected_topic_obj,
-                            author=author,
-                            content=reply.strip(),
-                        )
-                        selected_topic_obj.last_activity_at = timezone.now()
-                        selected_topic_obj.save()
-                        st.success("Reply posted.")
-                        st.rerun()
+                        try:
+                            DiscussionPost.objects.create(
+                                topic=selected_topic_obj,
+                                author=author,
+                                content=reply.strip(),
+                            )
+                            selected_topic_obj.last_activity_at = timezone.now()
+                            selected_topic_obj.save()
+                            st.success("Reply posted.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error posting reply: {e}")
 
     st.markdown("---")
     st.caption(
@@ -316,5 +335,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
