@@ -1,28 +1,29 @@
 """
 URL configuration for restaurant project.
-
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/5.2/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+
 from django.contrib import admin
 from django.urls import path, include
 
+# Streamlit redirect views
+from restaurant.frontend_redirects import (
+    ai_chat_redirect,
+    discussion_redirect,
+    allergy_redirect
+)
+
 urlpatterns = [
     path('admin/', admin.site.urls),
+
+    # Django apps
     path('api-auth/', include('rest_framework.urls')),
-    path('accounts/', include('accounts.urls')),   
+    path('accounts/', include('accounts.urls')),
+    path("payments/", include("payments.urls")),
     path('reputation/', include('reputation.urls')),
     path('hr/', include('hr.urls')),
-    path("payments/", include("payments.urls")),
-    path('reputation/', include('reputation.urls'))
+
+    # Streamlit integrations (UC20–21, UC16, UC22)
+    path("ai/chat/", ai_chat_redirect, name="ai_chat"),
+    path("discussion/", discussion_redirect, name="discussion"),
+    path("allergy/", allergy_redirect, name="allergy"),
 ]
