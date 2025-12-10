@@ -1,3 +1,4 @@
+
 import os
 from pathlib import Path
 from typing import Optional
@@ -17,7 +18,7 @@ import django
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# UPDATE: Correct Django settings module
+# Correct Django settings module
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "restaurant.settings")
 
 try:
@@ -49,15 +50,20 @@ ROLE_MANAGER = "MANAGER"
 
 def resolve_logged_in_user():
     """
-    Receives user info from Django redirect:
-    http://localhost:8506/allergy?username=john&role=CUSTOMER
+    Receives user info from Django redirect, e.g.:
+      http://localhost:8506/allergy?username=john&role=CUSTOMER
+
+    st.query_params returns lists: {"username": ["john"], "role": ["CUSTOMER"]}
+    so we must use [0].
     """
-
     qp = st.query_params
-    username = qp.get("username", None)
 
+    username = qp.get("username", [""])[0]
+    role_qp = qp.get("role", ["VISITOR"])[0] or ROLE_VISITOR
+
+    # If user opens directly (no query params), use demo customer for testing
     if not username:
-        return None, ROLE_VISITOR
+        return "demo_customer", ROLE_CUSTOMER
 
     # Manager?
     if Manager.objects.filter(user__username=username).exists():
@@ -70,7 +76,7 @@ def resolve_logged_in_user():
             return username, ROLE_VIP
         return username, ROLE_CUSTOMER
 
-    # Default – visitor
+    # Default – visitor (username string but no matching record)
     return username, ROLE_VISITOR
 
 
@@ -84,10 +90,15 @@ def user_can_edit_allergies(role: str) -> bool:
 
 
 def get_customer_for_username(username: str) -> Optional[Customer]:
+    """
+    Map username -> Customer.
+    Your Customer extends AbstractUser, so username is on Customer,
+    but we also check user__username just in case.
+    """
     try:
-        cust = Customer.objects.filter(user__username=username).first()
+        cust = Customer.objects.filter(username=username).first()
         if not cust:
-            cust = Customer.objects.filter(username=username).first()
+            cust = Customer.objects.filter(user__username=username).first()
         return cust
     except Exception:
         return None
@@ -156,7 +167,7 @@ def main():
         layout="centered",
     )
 
-    # REAL login
+    # REAL login from Django
     username, role = resolve_logged_in_user()
 
     render_header()
