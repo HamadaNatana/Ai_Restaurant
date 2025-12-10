@@ -15,10 +15,10 @@ except ImportError:
 
 import django
 
-BASE_DIR = Path(__file__).resolve().parent.parent  # project root
+BASE_DIR = Path(__file__).resolve().parent.parent
 
-# TODO: CHANGE THIS to your actual project settings module
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "restaurant_project.settings")
+# UPDATE: Correct Django settings module
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "restaurant.settings")
 
 try:
     django.setup()
@@ -26,11 +26,11 @@ except Exception as e:
     st.error(f"Django setup failed: {e}")
 
 from ai_assist.models import AllergyPreference
-from accounts.models import Customer
+from accounts.models import Customer, Manager
 
 load_dotenv(BASE_DIR / ".env")
 
-# UC22 – common allergen list
+# UC22 – allergen list
 ALLERGENS = [
     "milk", "egg", "peanut", "tree_nut",
     "fish", "shellfish", "wheat", "soy",
@@ -43,25 +43,44 @@ ROLE_VIP = "VIP"
 ROLE_MANAGER = "MANAGER"
 
 
-# ---------------- User / role helpers ----------------
+# ---------------------------------------------------------
+# REAL LOGIN DETECTION (UC03)
+# ---------------------------------------------------------
 
-def init_user():
+def resolve_logged_in_user():
     """
-    For the prototype, we simulate a logged-in user.
-    In the real system, UC03 would set username + role.
+    Receives user info from Django redirect:
+    http://localhost:8506/allergy?username=john&role=CUSTOMER
     """
-    if "username" not in st.session_state:
-        st.session_state.username = "demo_customer"
-    if "role" not in st.session_state:
-        st.session_state.role = ROLE_CUSTOMER
+
+    qp = st.query_params
+    username = qp.get("username", None)
+
+    if not username:
+        return None, ROLE_VISITOR
+
+    # Manager?
+    if Manager.objects.filter(user__username=username).exists():
+        return username, ROLE_MANAGER
+
+    # Customer?
+    cust = Customer.objects.filter(username=username).first()
+    if cust:
+        if cust.status == Customer.STATUS_VIP:
+            return username, ROLE_VIP
+        return username, ROLE_CUSTOMER
+
+    # Default – visitor
+    return username, ROLE_VISITOR
 
 
-def user_can_edit_allergies() -> bool:
-    """
-    UC22 actors: Registered and VIP customers.
-    Only these can configure allergy preferences.
-    """
-    return st.session_state.role in (ROLE_CUSTOMER, ROLE_VIP)
+# ---------------------------------------------------------
+# Permissions
+# ---------------------------------------------------------
+
+def user_can_edit_allergies(role: str) -> bool:
+    """Only Registered & VIP customers may edit UC22 preferences."""
+    return role in (ROLE_CUSTOMER, ROLE_VIP)
 
 
 def get_customer_for_username(username: str) -> Optional[Customer]:
@@ -74,12 +93,11 @@ def get_customer_for_username(username: str) -> Optional[Customer]:
         return None
 
 
-# ---------------- Data helpers (Django model) ----------------
+# ---------------------------------------------------------
+# Allergy Preference Helpers (Django model)
+# ---------------------------------------------------------
 
 def load_allergy_prefs(username: str):
-    """
-    Return list of allergens for this username, using AllergyPreference model.
-    """
     customer = get_customer_for_username(username)
     if not customer:
         return []
@@ -91,20 +109,14 @@ def load_allergy_prefs(username: str):
 
     if not pref:
         return []
+
     return pref.get_allergen_list()
 
 
 def save_allergy_prefs(username: str, allergens):
-    """
-    Save/update allergy preferences for one user via AllergyPreference model.
-    allergens is a list like ["milk", "peanut"].
-    """
     customer = get_customer_for_username(username)
     if not customer:
-        st.error(
-            "No Customer record found for this username. "
-            "Make sure the Django Customer model is set up correctly."
-        )
+        st.error("Customer record not found.")
         return
 
     try:
@@ -115,7 +127,9 @@ def save_allergy_prefs(username: str, allergens):
         st.error(f"Could not save allergy preferences: {e}")
 
 
-# ---------------- UI helpers ----------------
+# ---------------------------------------------------------
+# UI Header
+# ---------------------------------------------------------
 
 def render_header():
     st.markdown(
@@ -131,7 +145,9 @@ def render_header():
     )
 
 
-# ---------------- Main UC22 Screen ----------------
+# ---------------------------------------------------------
+# MAIN UC22 Screen
+# ---------------------------------------------------------
 
 def main():
     st.set_page_config(
@@ -139,54 +155,56 @@ def main():
         page_icon="⚕️",
         layout="centered",
     )
-    init_user()
+
+    # REAL login
+    username, role = resolve_logged_in_user()
+
     render_header()
 
     st.write("")
     st.markdown(
-        f"### Manage allergies for **{st.session_state.username}** "
-        f"(_role: {st.session_state.role}_)"
+        f"### Manage allergies for **{username or 'Unknown'}** "
+        f"(_role: {role}_)"
     )
 
-    # Role-based access (UC22 actors = Registered & VIP)
-    if not user_can_edit_allergies():
+    # Role-based access (UC22)
+    if not user_can_edit_allergies(role):
         st.info(
             "Only **Registered** and **VIP** customers can configure allergy preferences.\n\n"
-            "- Visitors should register and log in first (UC01 / UC03).\n"
-            "- Managers, chefs, and drivers do not use this screen."
+            "- Visitors must register and log in first (UC01 / UC03).\n"
+            "- Managers and staff do not use this screen."
         )
         st.markdown("---")
         st.caption(
-            "UC22 enforced: allergy preferences are customer-facing only, "
-            "used later for menu filtering in UC06/UC07."
+            "UC22 enforced: allergy preferences are customer-facing only."
         )
         return
 
-    current_allergies = load_allergy_prefs(st.session_state.username)
+    # Load existing allergies
+    current_allergies = load_allergy_prefs(username)
 
     selected = st.multiselect(
         "Select all allergens that apply to you:",
         options=ALLERGENS,
         default=current_allergies,
-        help="These will be used later to hide unsafe dishes in the Menu screen.",
+        help="These allergens will be used to filter menu items (UC06 / UC07).",
     )
 
     if st.button("Save Preferences"):
-        save_allergy_prefs(st.session_state.username, selected)
-        if get_customer_for_username(st.session_state.username):
+        save_allergy_prefs(username, selected)
+
+        if get_customer_for_username(username):
             st.success("Your allergy preferences were saved successfully.")
 
     if selected:
         st.markdown("#### Currently blocked allergens")
         st.write(", ".join(selected))
     else:
-        st.info("You have not selected any allergens. No filtering will be applied.")
+        st.info("You have not selected any allergens.")
 
     st.markdown("---")
     st.caption(
-        "Implements UC22: Registered/VIP customers can save allergy preferences, "
-        "which are stored in the Django model AllergyPreference and consumed by Menu (UC06/UC07) "
-        "for filtering unsafe dishes."
+        "Implements UC22: Registered/VIP customers store allergy preferences in the Django model."
     )
 
 
