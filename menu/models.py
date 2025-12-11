@@ -34,6 +34,9 @@ class Ingredient(TimeStampedModel):
     name = models.CharField(max_length=120, unique=True)
     allergens = models.OneToOneField(Allergen, blank=True, null=True, on_delete=models.PROTECT)
 
+    def __str__(self):
+        return self.name
+
 class Chef(TimeStampedModel):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, unique=True)
     name = models.CharField(max_length=50)
@@ -50,6 +53,9 @@ class Dish(TimeStampedModel):
     picture = models.ImageField(upload_to='dishes/', blank=True, null=True)
     special_for_vip = models.BooleanField(default=False)  # FR-1.1.11
     is_active = models.BooleanField(default=True) # CRITICAL: Added for UC19/UC06/UC07 checks
+
+    def __str__(self):
+        return self.name
 '''
 class DishIngredient(TimeStampedModel):
     dish = models.ForeignKey(Dish, on_delete=models.CASCADE)
