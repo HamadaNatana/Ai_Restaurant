@@ -26,7 +26,7 @@ except Exception as e:
     st.error(f"Django setup failed: {e}")
 
 from django.utils import timezone
-from ai_assist.models import DiscussionTopic, DiscussionPost
+from forms.models import DiscussionThread, DiscussionPost
 from accounts.models import Customer, Manager
 
 load_dotenv(BASE_DIR / ".env")
@@ -142,10 +142,10 @@ def main():
 
     # Load topics
     try:
-        topics = DiscussionTopic.objects.all().order_by("-last_activity_at")
+        topics = DiscussionThread.objects.all().order_by("-last_activity_at")
     except Exception as e:
         st.error(f"Error loading topics from database: {e}")
-        topics = DiscussionTopic.objects.none()
+        topics = DiscussionThread.objects.none()
 
     # Load posts
     try:
@@ -204,7 +204,7 @@ def main():
                     author = get_customer_for_username(username)
                     now = timezone.now()
                     try:
-                        new_topic = DiscussionTopic.objects.create(
+                        new_topic = DiscussionThread.objects.create(
                             title=title.strip(),
                             category=category,
                             topic_ref_id=topic_ref_id.strip() or None,
@@ -235,7 +235,7 @@ def main():
             selected_text = st.selectbox("Select a topic", topic_titles)
             if selected_text:
                 sel_id = selected_text.split(":", 1)[0].strip()
-                selected_topic_obj = DiscussionTopic.objects.filter(pk=sel_id).first()
+                selected_topic_obj = DiscussionThread.objects.filter(pk=sel_id).first()
 
         if not selected_topic_obj:
             st.info("Select a topic to view posts.")

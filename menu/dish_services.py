@@ -6,7 +6,7 @@ Updated to use Dish.is_active field for availability and deletion/unavailability
 from typing import Tuple, Optional, Dict, List
 from django.db import transaction
 from django.db.models import F
-from menu.models import Dish, Chef, DishIngredient, Ingredient
+from menu.models import Dish, Chef, Ingredient
 from orders.models import OrderItem, Order # Assume successful import
 
 

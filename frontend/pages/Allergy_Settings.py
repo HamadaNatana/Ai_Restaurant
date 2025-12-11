@@ -26,7 +26,7 @@ try:
 except Exception as e:
     st.error(f"Django setup failed: {e}")
 
-from ai_assist.models import AllergyPreference
+from menu.models import AllergyPreference
 from accounts.models import Customer, Manager
 
 load_dotenv(BASE_DIR / ".env")
