@@ -9,7 +9,7 @@ import streamlit as st
 # Optional: dotenv (if installed)
 try:
     from dotenv import load_dotenv
-except ImportError:  # fail-safe
+except ImportError:
     def load_dotenv(*args, **kwargs):
         return
 
@@ -17,11 +17,10 @@ except ImportError:  # fail-safe
 
 import django
 
-BASE_DIR = Path(__file__).resolve().parent.parent  # project root (where manage.py is)
+BASE_DIR = Path(__file__).resolve().parent.parent  # project root (where manage.py lives)
 
-# TODO: CHANGE THIS to your actual Django project settings module
-# Example: "ai_restaurant_project.settings"
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "restaurant_project.settings")
+# Correct project settings module
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "restaurant.settings")
 
 try:
     django.setup()
@@ -29,7 +28,7 @@ except Exception as e:
     st.error(f"Django setup failed: {e}")
 
 from ai_assist.models import KBEntry, AIAnswer, AIRating, KBFlag
-from accounts.models import Customer
+from accounts.models import Customer, Manager
 
 # ---------------- Env / HF config ----------------
 
@@ -40,35 +39,66 @@ HF_MODEL = os.getenv("HF_MODEL", "gpt2")
 HF_API_URL = f"https://api-inference.huggingface.co/models/{HF_MODEL}"
 
 
-def now_dt():
-    return datetime.now()
+# -----------------------------------------------------
+# REAL LOGIN DETECTION (UC03 → Streamlit via query params)
+# -----------------------------------------------------
+
+def resolve_logged_in_user():
+    """
+    Django redirects here with:
+        http://localhost:8506/ai_chat_streamlit?username=john&role=VIP
+
+    Streamlit's st.query_params returns a dict of lists:
+        {"username": ["john"], "role": ["VIP"]}
+
+    So we must always index [0].
+    """
+    qp = st.query_params
+
+    username = qp.get("username", [""])[0]
+    role = qp.get("role", ["VISITOR"])[0]
+
+    if not username:
+        # Fallback when page is opened directly (not via Django)
+        return "demo_customer", "CUSTOMER"
+
+    # If manager exists with that username
+    if Manager.objects.filter(user__username=username).exists():
+        return username, "MANAGER"
+
+    # If customer exists with that username
+    cust = Customer.objects.filter(username=username).first()
+    if cust:
+        if cust.status == Customer.STATUS_VIP:
+            return username, "VIP"
+        return username, "CUSTOMER"
+
+    # Default: visitor
+    return username, role or "VISITOR"
 
 
-# ---------------- Helpers: user mapping ----------------
+# -----------------------------------------------------
+# Helpers
+# -----------------------------------------------------
 
 def get_customer_for_username(username: str) -> Optional[Customer]:
     """
-    Map the Streamlit 'username' -> Customer instance.
-    Tries:
-    - Customer.user.username
-    - Customer.username
-    Returns None if not found (safe).
+    Map username string → Customer instance.
+    Customer is your AUTH_USER_MODEL, so username is on Customer itself.
     """
     try:
-        cust = Customer.objects.filter(user__username=username).first()
+        cust = Customer.objects.filter(username=username).first()
         if not cust:
-            cust = Customer.objects.filter(username=username).first()
+            # In case you ever use a separate User model
+            cust = Customer.objects.filter(user__username=username).first()
         return cust
     except Exception:
         return None
 
 
-# ---------------- Local KB lookup (UC20) ----------------
-
 def find_local_answer(question: str) -> Optional[KBEntry]:
     """
-    Query KBEntry in DB for a simple fuzzy match:
-    lowercase, strip '?', then substring match in either direction.
+    UC20 – Search KBEntry in DB with simple fuzzy match.
     """
     q = (question or "").lower().strip().strip("?")
     if not q:
@@ -80,12 +110,14 @@ def find_local_answer(question: str) -> Optional[KBEntry]:
             if kbq and (kbq in q or q in kbq):
                 return entry
     except Exception:
-        # If DB is not migrated or there is some error, just fail silently
         return None
+
     return None
 
 
-# ---------------- HF LLM Call (fallback) ----------------
+# -----------------------------------------------------
+# HF LLM fallback (UC20)
+# -----------------------------------------------------
 
 def build_hf_prompt(question: str, history: List[Dict]) -> str:
     system_instructions = """
@@ -112,19 +144,18 @@ If you are unsure, say you don't know and ask the user to contact the manager.
 
     convo_text = "\n".join(convo_lines) if convo_lines else "(no previous messages)"
 
-    prompt = (
+    return (
         system_instructions.strip()
         + "\n\nPrevious conversation:\n"
         + convo_text
         + f"\n\nCustomer: {question}\nAssistant:"
     )
-    return prompt
 
 
 def hf_chat(question: str, history: List[Dict]) -> str:
     """
-    UC20 – external LLM fallback.
-    Handles errors gracefully and never shows raw tracebacks to the user.
+    UC20 – External LLM fallback.
+    Handles errors gracefully and never shows raw tracebacks.
     """
     if not HF_API_TOKEN:
         return (
@@ -135,10 +166,7 @@ def hf_chat(question: str, history: List[Dict]) -> str:
     headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
     payload = {
         "inputs": build_hf_prompt(question, history),
-        "parameters": {
-            "max_new_tokens": 256,
-            "temperature": 0.4,
-        },
+        "parameters": {"max_new_tokens": 256, "temperature": 0.4},
     }
 
     try:
@@ -165,16 +193,20 @@ def hf_chat(question: str, history: List[Dict]) -> str:
         )
 
 
-# ---------------- Session helpers ----------------
+# -----------------------------------------------------
+# Session Handling
+# -----------------------------------------------------
 
-def init_session():
-    if "username" not in st.session_state:
-        st.session_state.username = "demo_customer"
-    if "role" not in st.session_state:
-        st.session_state.role = "CUSTOMER"  # or "VIP", "MANAGER" etc.
+def init_session(username: str, role: str):
+    """
+    Initialize Streamlit session with real login info from Django.
+    """
+    st.session_state.username = username
+    st.session_state.role = role
 
     if "messages" not in st.session_state:
         st.session_state.messages = []  # list of {role, content, source}
+
     if "last_answer" not in st.session_state:
         st.session_state.last_answer = None  # {"ai_answer_id": str, "source": str}
 
@@ -185,29 +217,13 @@ def add_message(role: str, content: str, source: Optional[str] = None):
     )
 
 
-# ---------------- UI: header ----------------
-
-def render_header():
-    st.markdown(
-        """
-        <div style="background-color:#111827;padding:10px 16px;border-radius:0 0 8px 8px;">
-            <h2 style="color:white;margin:0;">AI Customer Service Chat</h2>
-            <p style="color:#9ca3af;margin:2px 0 0 0;font-size:13px;">
-                UC20 – Local KB first, then external AI fallback &nbsp;&nbsp;|&nbsp;&nbsp;
-                UC21 – Rate answers 0–5 and flag bad KB content for manager review
-            </p>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
-# ---------------- Chat logic (UC20) ----------------
+# -----------------------------------------------------
+# Chat logic (UC20)
+# -----------------------------------------------------
 
 def handle_user_question(question: str):
-    # Basic validation (UC20-E1)
     if not question.strip():
-        st.warning("Please enter a question before sending.")
+        st.warning("Please enter a question.")
         return
 
     add_message("user", question, None)
@@ -217,8 +233,7 @@ def handle_user_question(question: str):
         answer_text = kb_entry.answer
         source = "kb"
     else:
-        history = st.session_state.messages
-        answer_text = hf_chat(question, history)
+        answer_text = hf_chat(question, st.session_state.messages)
         source = "llm"
 
     # Persist AIAnswer
@@ -231,9 +246,8 @@ def handle_user_question(question: str):
         )
         ai_answer_id = str(ai_answer.ai_answer_id)
     except Exception as e:
-        # If DB fails, still show the answer, but rating won't work
         ai_answer_id = None
-        st.error(f"Warning: could not save AI answer to database ({e}).")
+        st.error(f"Could not save AI answer: {e}")
 
     add_message("assistant", answer_text, source)
     st.session_state.last_answer = {
@@ -245,31 +259,21 @@ def handle_user_question(question: str):
 def render_chat_panel():
     st.markdown("### Conversation")
 
-    # past messages
     for msg in st.session_state.messages:
-        if msg["role"] == "user":
-            with st.chat_message("user"):
-                st.write(msg["content"])
-        else:
-            label = "AI"
-            if msg.get("source") == "kb":
-                label = "AI (Local KB)"
-            elif msg.get("source") == "llm":
-                label = "AI (External LLM – Hugging Face)"
-
-            with st.chat_message("assistant"):
-                st.markdown(f"**{label}:**")
-                st.write(msg["content"])
+        with st.chat_message("user" if msg["role"] == "user" else "assistant"):
+            st.write(msg["content"])
 
     user_input = st.chat_input(
         "Ask a question about menu, VIP, deposits, warnings, delivery, or allergies..."
     )
-    if user_input is not None:
+    if user_input:
         handle_user_question(user_input)
         st.rerun()
 
 
-# ---------------- Rating logic (UC21) ----------------
+# -----------------------------------------------------
+# Ratings (UC21)
+# -----------------------------------------------------
 
 def render_rating_panel():
     st.markdown("### Rate the Last Answer")
@@ -279,21 +283,16 @@ def render_rating_panel():
         st.info("Ask a question first, then you can rate the AI's answer here.")
         return
 
-    from ai_assist.models import AIAnswer  # local import to avoid circulars in some setups
-
-    try:
-        ai_answer = AIAnswer.objects.filter(
-            ai_answer_id=last["ai_answer_id"]
-        ).first()
-    except Exception as e:
-        st.error(f"Error fetching last answer from database: {e}")
-        return
-
+    ai_answer = AIAnswer.objects.filter(
+        ai_answer_id=last["ai_answer_id"]
+    ).first()
     if not ai_answer:
         st.error("Internal error: last answer not found in database.")
         return
 
-    source_label = "Local Knowledge Base" if ai_answer.source == "kb" else "External LLM"
+    source_label = (
+        "Local Knowledge Base" if ai_answer.source == "kb" else "External LLM"
+    )
     st.write(f"**Answer source:** {source_label}")
 
     with st.expander("Preview last answer", expanded=False):
@@ -339,18 +338,38 @@ def render_rating_panel():
             st.success("Thank you! Your rating has been saved.")
 
 
-# ---------------- Main ----------------
+# -----------------------------------------------------
+# MAIN
+# -----------------------------------------------------
 
 def main():
+    # Get real user + role from Django redirect
+    username, role = resolve_logged_in_user()
+    init_session(username, role)
+
     st.set_page_config(
         page_title="AI Restaurant – AI Chat",
         page_icon="🤖",
         layout="wide",
     )
-    init_session()
-    render_header()
+
+    st.markdown(
+        """
+        <div style="background-color:#111827;padding:10px 16px;border-radius:0 0 8px 8px;">
+            <h2 style="color:white;margin:0;">AI Customer Service Chat</h2>
+            <p style="color:#9ca3af;margin:2px 0 0 0;font-size:13px;">
+                UC20 – Local KB first, then external AI fallback &nbsp;&nbsp;|&nbsp;&nbsp;
+                UC21 – Rate answers 0–5 and flag bad KB content for manager review
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.caption(f"Logged in as **{username}** | Role: **{role}**")
 
     col1, col2 = st.columns([2, 1])
+
     with col1:
         render_chat_panel()
 

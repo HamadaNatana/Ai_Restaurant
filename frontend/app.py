@@ -7,7 +7,7 @@ import sys
 # Add project root to system path so we can import 'restaurant'
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'restaurant.settings')
-django.setup()
+#django.setup()
 
 # 2. PAGE CONFIG
 st.set_page_config(

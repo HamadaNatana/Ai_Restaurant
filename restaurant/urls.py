@@ -17,21 +17,13 @@ urlpatterns = [
 
     # Django apps
     path('api-auth/', include('rest_framework.urls')),
-<<<<<<< HEAD
-    path('accounts/', include('accounts.urls')),
-    path("payments/", include("payments.urls")),
-    path('reputation/', include('reputation.urls')),
-    path('hr/', include('hr.urls')),
-
-    # Streamlit integrations (UC20–21, UC16, UC22)
-    path("ai/chat/", ai_chat_redirect, name="ai_chat"),
-    path("discussion/", discussion_redirect, name="discussion"),
-    path("allergy/", allergy_redirect, name="allergy"),
-=======
     path('api/accounts/', include('accounts.urls')),   
     path('api/reputation/', include('reputation.urls')),
     path('api/hr/', include('hr.urls')),
     path('api/payments/', include('payments.urls')),
-    path('api/reputation/', include('reputation.urls'))
->>>>>>> 848445be (Finalize the backend)
+    path('api/reputation/', include('reputation.urls')),
+    path("ai/chat/", ai_chat_redirect, name="ai_chat"),
+    path("discussion/", discussion_redirect, name="discussion"),
+    path("allergy/", allergy_redirect, name="allergy"),
+
 ]

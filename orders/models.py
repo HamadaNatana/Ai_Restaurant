@@ -23,26 +23,24 @@ class Order(TimeStampedModel):
     ]
 
     customer_id = models.ForeignKey(Customer, on_delete=models.PROTECT) 
-    
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES,
-                              default=STATUS_PENDING)
-    
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES,default=STATUS_PENDING)
     subtotal = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    
     vip_discount_applied = models.BooleanField(default=False)
     free_delivery_applied = models.BooleanField(default=False)
 
     class Meta:
-        # Constraint to ensure only one pending order (cart) per customer
         constraints = [
-            models.UniqueConstraint(fields=['customer_id'], condition=models.Q(), name='unique_pending_order_per_customer')
+            models.UniqueConstraint(
+                fields=['customer_id'], 
+                condition=models.Q(status='pending'), 
+                name='unique_pending_order_per_customer'
+            )
         ]
     
 class OrderItem(TimeStampedModel):
     order_id = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='items') 
     dish_id = models.ForeignKey(Dish, on_delete=models.PROTECT) 
-    
     quantity = models.PositiveIntegerField(default=1)
     unit_price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
