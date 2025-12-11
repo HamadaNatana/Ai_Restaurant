@@ -3,8 +3,9 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Optional
 
-import requests
+# REMOVED: import requests (No longer needed for local Ollama)
 import streamlit as st
+import ollama  # ADDED: Local AI Library
 
 from utils.auth_helper import require_role
 from utils.sidebar import generate_sidebar
@@ -37,13 +38,12 @@ except Exception as e:
 from ai_assist.models import KBEntry, AIAnswer, AIRating, KBFlag
 from accounts.models import Customer, Manager
 
-# ---------------- Env / HF config ----------------
+# ---------------- Env / Config ----------------
 
 load_dotenv(BASE_DIR / ".env")
 
-HF_API_TOKEN = os.getenv("HF_API_TOKEN")
-HF_MODEL = os.getenv("HF_MODEL", "gpt2")
-HF_API_URL = f"https://api-inference.huggingface.co/models/{HF_MODEL}"
+# REMOVED: HF_API_TOKEN, HF_MODEL, HF_API_URL logic
+# We now rely on the local 'ollama' server running in the background.
 
 
 # -----------------------------------------------------
@@ -54,11 +54,6 @@ def resolve_logged_in_user():
     """
     Django redirects here with:
         http://localhost:8506/ai_chat_streamlit?username=john&role=VIP
-
-    Streamlit's st.query_params returns a dict of lists:
-        {"username": ["john"], "role": ["VIP"]}
-
-    So we must always index [0].
     """
     qp = st.query_params
 
@@ -89,14 +84,9 @@ def resolve_logged_in_user():
 # -----------------------------------------------------
 
 def get_customer_for_username(username: str) -> Optional[Customer]:
-    """
-    Map username string → Customer instance.
-    Customer is your AUTH_USER_MODEL, so username is on Customer itself.
-    """
     try:
         cust = Customer.objects.filter(username=username).first()
         if not cust:
-            # In case you ever use a separate User model
             cust = Customer.objects.filter(user__username=username).first()
         return cust
     except Exception:
@@ -123,80 +113,54 @@ def find_local_answer(question: str) -> Optional[KBEntry]:
 
 
 # -----------------------------------------------------
-# HF LLM fallback (UC20)
+# LOCAL OLLAMA FALLBACK (UC20) -- REPLACED HF LOGIC
 # -----------------------------------------------------
 
-def build_hf_prompt(question: str, history: List[Dict]) -> str:
+def ollama_chat(question: str, history: List[Dict]) -> str:
+    """
+    UC20 – External LLM fallback using Local Mistral (Ollama).
+    """
     system_instructions = """
-You are the AI assistant for an AI-enabled Online Restaurant Order & Delivery System.
+    You are the AI assistant for an AI-enabled Online Restaurant Order & Delivery System.
 
-ONLY talk about:
-- menu items, ingredients, allergens
-- ordering, delivery, deposits, VIP rules and benefits
-- warnings, complaints, discussion board features
-- how to use this restaurant app
+    ONLY talk about:
+    - menu items, ingredients, allergens
+    - ordering, delivery, deposits, VIP rules and benefits
+    - warnings, complaints, discussion board features
+    - how to use this restaurant app
 
-If the user asks about anything else (e.g., politics, math, life advice),
-reply exactly with:
-"I can only answer questions about this restaurant and this app."
+    If the user asks about anything else (e.g., politics, math, life advice),
+    reply exactly with:
+    "I can only answer questions about this restaurant and this app."
 
-Do NOT invent new discounts, VIP rules, or policies.
-If you are unsure, say you don't know and ask the user to contact the manager.
-"""
-
-    convo_lines = []
-    for msg in history[-6:]:
-        role = "Customer" if msg.get("role") == "user" else "Assistant"
-        convo_lines.append(f"{role}: {msg.get('content', '')}")
-
-    convo_text = "\n".join(convo_lines) if convo_lines else "(no previous messages)"
-
-    return (
-        system_instructions.strip()
-        + "\n\nPrevious conversation:\n"
-        + convo_text
-        + f"\n\nCustomer: {question}\nAssistant:"
-    )
-
-
-def hf_chat(question: str, history: List[Dict]) -> str:
+    Do NOT invent new discounts, VIP rules, or policies.
+    If you are unsure, say you don't know and ask the user to contact the manager.
     """
-    UC20 – External LLM fallback.
-    Handles errors gracefully and never shows raw tracebacks.
-    """
-    if not HF_API_TOKEN:
-        return (
-            "The external AI service is not configured. "
-            "Please contact the manager or system administrator."
-        )
 
-    headers = {"Authorization": f"Bearer {HF_API_TOKEN}"}
-    payload = {
-        "inputs": build_hf_prompt(question, history),
-        "parameters": {"max_new_tokens": 256, "temperature": 0.4},
-    }
+    # Build the messages list for Ollama
+    # 1. Start with the system prompt
+    messages = [{'role': 'system', 'content': system_instructions}]
+
+    # 2. Add history (convert 'assistant'/'user' roles if needed)
+    # Streamlit stores history as 'user'/'assistant', which matches Ollama API perfectly.
+    for msg in history[-6:]: # Keep context short (last 6 messages)
+        # Filter out keys that might confuse Ollama (like 'source')
+        clean_msg = {'role': msg['role'], 'content': msg['content']}
+        messages.append(clean_msg)
+
+    # 3. Add the current question
+    messages.append({'role': 'user', 'content': question})
 
     try:
-        resp = requests.post(HF_API_URL, headers=headers, json=payload, timeout=60)
-        resp.raise_for_status()
-        data = resp.json()
+        response = ollama.chat(model='mistral', messages=messages)
+        answer = response['message']['content']
+        return answer
 
-        if isinstance(data, list) and data:
-            full_text = data[0].get("generated_text", "")
-        else:
-            full_text = data.get("generated_text", "")
-
-        if "Assistant:" in full_text:
-            answer = full_text.split("Assistant:", 1)[1].strip()
-        else:
-            answer = full_text.strip()
-
-        return answer or "(The AI did not return any content.)"
-
-    except Exception:
+    except Exception as e:
+        # Fallback if Ollama is not running or crashes
         return (
-            "Sorry, the external AI service is currently unavailable. "
-            "Please try again later or contact the manager."
+            f"Error: The local AI service is unavailable ({str(e)}). "
+            "Please ensure 'ollama run mistral' is running in the terminal."
         )
 
 
@@ -208,8 +172,10 @@ def init_session(username: str, role: str):
     """
     Initialize Streamlit session with real login info from Django.
     """
-    st.session_state.username = username
-    st.session_state.role = role
+    if "username" not in st.session_state:
+        st.session_state.username = username
+    if "role" not in st.session_state:
+        st.session_state.role = role
 
     if "messages" not in st.session_state:
         st.session_state.messages = []  # list of {role, content, source}
@@ -235,12 +201,16 @@ def handle_user_question(question: str):
 
     add_message("user", question, None)
 
+    # 1. Try Local DB
     kb_entry = find_local_answer(question)
+    
     if kb_entry:
         answer_text = kb_entry.answer
         source = "kb"
     else:
-        answer_text = hf_chat(question, st.session_state.messages)
+        # 2. Try Local LLM (Ollama) - CHANGED FROM HF_CHAT
+        with st.spinner("Asking Mistral AI..."):
+            answer_text = ollama_chat(question, st.session_state.messages)
         source = "llm"
 
     # Persist AIAnswer
@@ -267,7 +237,7 @@ def render_chat_panel():
     st.markdown("### Conversation")
 
     for msg in st.session_state.messages:
-        with st.chat_message("user" if msg["role"] == "user" else "assistant"):
+        with st.chat_message(msg["role"]):
             st.write(msg["content"])
 
     user_input = st.chat_input(
@@ -298,7 +268,7 @@ def render_rating_panel():
         return
 
     source_label = (
-        "Local Knowledge Base" if ai_answer.source == "kb" else "External LLM"
+        "Local Knowledge Base" if ai_answer.source == "kb" else "External LLM (Mistral)"
     )
     st.write(f"**Answer source:** {source_label}")
 
@@ -365,7 +335,7 @@ def main():
         <div style="background-color:#111827;padding:10px 16px;border-radius:0 0 8px 8px;">
             <h2 style="color:white;margin:0;">AI Customer Service Chat</h2>
             <p style="color:#9ca3af;margin:2px 0 0 0;font-size:13px;">
-                UC20 – Local KB first, then external AI fallback &nbsp;&nbsp;|&nbsp;&nbsp;
+                UC20 – Local KB first, then Local Mistral AI fallback &nbsp;&nbsp;|&nbsp;&nbsp;
                 UC21 – Rate answers 0–5 and flag bad KB content for manager review
             </p>
         </div>
@@ -388,14 +358,14 @@ def main():
         render_rating_panel()
 
         st.markdown("---")
-        st.markdown("#### Debug Info (temporary)")
-        st.write(f"HF Token Loaded: {HF_API_TOKEN is not None}")
-        st.write(f"Model Selected: {HF_MODEL}")
-        st.write(f"API URL: {HF_API_URL}")
+        st.markdown("#### System Status")
+        st.write("AI Model: **Local Mistral (Ollama)**")
+        st.write("Status: **Active**")
+        st.caption("Running locally on port 11434")
 
         st.markdown("---")
         st.info(
-            "- UC20: Local KB (KBEntry) is used first; if no match, an external LLM is called.\n"
+            "- UC20: Local KB (KBEntry) is used first; if no match, Local Mistral AI is called.\n"
             "- UC21: Every answer can be rated 0–5; rating 0 on a **local KB** answer "
             "also flags it for manager review (KBFlag)."
         )

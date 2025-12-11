@@ -24,6 +24,9 @@ class RegistrationApproval(TimeStampedModel):
     rejection_reason = models.TextField(blank=True)
     processed_at = models.DateTimeField(null=True, blank=True)
 
+    def __str__(self):
+        return f"Regitration for {self.username}"
+
 class HRAction(TimeStampedModel):
     ACTOR_CHEF = "chef"
     ACTOR_DRIVER = "driver"

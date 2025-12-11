@@ -1,167 +1,184 @@
 import streamlit as st
 import requests
+import ollama
 from utils.auth_helper import require_role
 from utils.sidebar import generate_sidebar
 
+# 1. SETUP
+st.set_page_config(page_title="Menu & Order", page_icon="🍔", layout="wide")
 generate_sidebar()
 require_role(["VISITOR", "CUSTOMER", "VIP", "CHEF"])
 
-
-# CONFIGURATION
+# 2. CONFIGURATION
 BASE_URL = "http://127.0.0.1:8000"
-
-# --- UPDATED URLS FOR THE NEW "DAVID FORMAT" ---
 API_URLS = {
-    # 1. FIXED: Menu is now served by a Router at /dishes/ (Plural)
-    "menu": f"{BASE_URL}/menu/api/dishes/",
-    
-    # 2. Cart is a single APIView handling GET (view) and POST (add)
-    "cart": f"{BASE_URL}/orders/api/cart/",
-    
-    # 3. Checkout is its own APIView
-    "checkout": f"{BASE_URL}/orders/api/checkout/"
+    "menu": f"{BASE_URL}/menu/dishes/", 
+    "cart": f"{BASE_URL}/orders/cart/",
+    # POINT TO 'cart/' (The endpoint that handles POST)
+    "add_item": f"{BASE_URL}/orders/cart/",  
+    "checkout": f"{BASE_URL}/orders/checkout/"
 }
 
-st.set_page_config(page_title="Menu & Order", page_icon="🍔", layout="wide")
-st.title("🍔 AI Restaurant Menu")
+# ---------------------------------------------------------
+# AI WAITER (Local)
+# ---------------------------------------------------------
+def ask_local_ai(question):
+    try:
+        system_instruction = "You are a helpful waiter. Keep answers brief."
+        response = ollama.chat(model='mistral', messages=[
+            {'role': 'system', 'content': system_instruction},
+            {'role': 'user', 'content': question},
+        ])
+        return response['message']['content']
+    except Exception as e:
+        return f"⚠️ AI Offline: {e}"
 
 # ---------------------------------------------------------
-# SIDEBAR: USER LOGIN & CART
+# HELPER: FETCH CART
 # ---------------------------------------------------------
+def fetch_cart(user_identifier):
+    try:
+        res = requests.get(API_URLS['cart'], params={"customer_id": user_identifier})
+        if res.status_code == 200:
+            data = res.json()
+            st.session_state.cart_items = data.get('items', [])
+            st.session_state.cart_total = data.get('total', 0)
+        else:
+            st.session_state.cart_items = []
+            st.session_state.cart_total = 0
+    except Exception:
+        st.session_state.cart_items = []
+
+# 3. SIDEBAR
 with st.sidebar:
-    st.header("👤 Customer Info")
-    
-    # Try to get session info from the Account Portal (if used)
-    if "username" in st.session_state and st.session_state["username"]:
-        default_user = st.session_state["username"] 
+    st.header("👤 Ordering As")
+    if st.session_state.get("logged_in"):
+        active_user = st.session_state["username"]
+        role = st.session_state.get("role", "CUSTOMER")
+        st.success(f"✅ **{active_user}** ({role})")
+        user_identifier = active_user
     else:
-        default_user = "Paste-UUID-Here"
+        st.warning("Guest Mode")
+        user_identifier = st.text_input("Enter Guest ID", value="Guest")
+        role = "Visitor"
 
-    user_id = st.text_input("Customer ID / Username", value=default_user, help="Enter your Customer ID (UUID) or Username")
-    user_type = st.selectbox("Status", ["Visitor", "Registered", "VIP", "Manager", "Chef"])
-    
     st.divider()
-    st.subheader("🛒 Your Cart")
     
-    # REFRESH CART BUTTON
-    if st.button("Refresh Cart"):
-        if user_id and user_id != "Paste-UUID-Here":
-            try:
-                # NEW LOGIC: GET request to /orders/api/cart/
-                res = requests.get(API_URLS['cart'], params={"customer_id": user_id})
-                
-                if res.status_code == 200:
-                    cart_data = res.json()
-                    st.session_state.cart_items = cart_data.get('items', [])
-                    st.session_state.cart_total = cart_data.get('total', 0)
-                else:
-                    st.warning("Cart empty or not found.")
-                    st.session_state.cart_items = []
-            except Exception as e:
-                st.error(f"Cart Error: {e}")
+    # AI CHAT
+    with st.expander("🤖 Ask AI Waiter", expanded=True):
+        if "menu_chat_history" not in st.session_state: st.session_state.menu_chat_history = []
+        for msg in st.session_state.menu_chat_history[-3:]:
+            if msg["role"] == "user": st.markdown(f"**You:** {msg['content']}")
+            else: st.info(f"**Waiter:** {msg['content']}")
 
-    # DISPLAY CART
-    if 'cart_items' in st.session_state and st.session_state.cart_items:
+        with st.form("chat_form"):
+            q = st.text_input("Question:")
+            if st.form_submit_button("Ask") and q:
+                st.session_state.menu_chat_history.append({"role": "user", "content": q})
+                with st.spinner("..."):
+                    ans = ask_local_ai(q)
+                st.session_state.menu_chat_history.append({"role": "assistant", "content": ans})
+                st.rerun()
+        if st.button("Clear Chat"):
+            st.session_state.menu_chat_history = []
+            st.rerun()
+
+    st.divider()
+    
+    # CART
+    st.subheader(f"🛒 Cart (${st.session_state.get('cart_total', 0)})")
+    if "cart_items" not in st.session_state: fetch_cart(user_identifier)
+    
+    if st.session_state.get("cart_items"):
         for item in st.session_state.cart_items:
-            # Serializer uses 'dish_name', old view used 'name'
-            d_name = item.get('dish_name') or item.get('name') or "Unknown Dish"
-            st.write(f"- {d_name} x{item['quantity']} (${item.get('unit_price', 0)})")
-            
-        st.divider()
-        st.write(f"**Total: ${st.session_state.get('cart_total', 0)}**")
+            d_name = item.get('dish_name') or item.get('name') or "Item"
+            st.write(f"• {d_name} x{item.get('quantity', 1)}")
         
-        # CHECKOUT BUTTON
-        if st.button("💳 Checkout Now"):
+        if st.button("💳 Checkout", type="primary", use_container_width=True):
             try:
-                # NEW LOGIC: POST request to /orders/api/checkout/
-                res = requests.post(API_URLS['checkout'], json={"customer_id": user_id})
-                
+                res = requests.post(API_URLS['checkout'], json={"customer_id": user_identifier})
                 if res.status_code == 200:
-                    result = res.json()
-                    st.success("Order Placed Successfully! 🚀")
                     st.balloons()
-                    if 'new_balance' in result:
-                        st.info(f"Remaining Balance: ${result['new_balance']}")
-                    st.session_state.cart_items = [] # Clear UI cart
+                    st.success("Order Placed!")
+                    st.session_state.cart_items = [] 
+                    st.session_state.cart_total = 0
+                    st.rerun()
                 else:
-                    err = res.json().get('error', res.text)
-                    st.error(f"Checkout Failed: {err}")
+                    st.error(f"Checkout Failed: {res.text}")
             except Exception as e:
-                st.error(f"Connection failed: {e}")
+                st.error(f"Error: {e}")
+    else:
+        st.caption("Empty")
+        if st.button("Refresh"): fetch_cart(user_identifier)
 
-# ---------------------------------------------------------
-# MAIN AREA: MENU
-# ---------------------------------------------------------
-st.header("Our Selection")
+# 4. MAIN MENU
+st.title("🍔 AI Restaurant Menu")
+with st.container(border=True):
+    c1, c2 = st.columns([3, 1])
+    search_query = c1.text_input("🔍 Search Menu")
+    allergy_mode = c2.toggle("🛡️ Safety Mode")
 
-# Filters
-col1, col2 = st.columns(2)
-search_query = col1.text_input("🔍 Search Dishes")
-allergy_mode = col2.checkbox("Enable Allergy Filter (Safety Mode)")
-
-# Fetch Menu from Backend
 try:
+    current_role = st.session_state.get("role", "Visitor")
     params = {
-        "user_type": user_type,
         "search": search_query,
-        "customer_id": user_id if allergy_mode else None
+        "customer_id": user_identifier if allergy_mode else None,
+        "user_type": current_role 
     }
     
-    # NEW LOGIC: Hit the Router Endpoint
     response = requests.get(API_URLS['menu'], params=params)
     
     if response.status_code == 200:
         data = response.json()
-        
-        # Handle both list (standard DRF) and dict (custom response) formats
         dishes = data.get('dishes', []) if isinstance(data, dict) else data
-        message = data.get('message', '') if isinstance(data, dict) else ''
         
-        if message:
-            st.info(message)
-            
         if not dishes:
-            st.warning("No dishes found matching your criteria.")
-            
-        # Display Dishes Grid
-        for dish in dishes:
-            with st.container(border=True):
-                c1, c2, c3 = st.columns([1, 3, 1])
-                c1.title("🍲") # Placeholder icon
-                
-                with c2:
-                    st.subheader(dish['name'])
-                    st.write(dish.get('description', ''))
-                    
-                    # VIP Badge
-                    if dish.get('special_for_vip'):
-                        st.caption("✨ **VIP Exclusive**")
-                        
-                    # Chef Info
-                    chef_name = dish.get('chef_name', 'Unknown Chef')
-                    st.caption(f"👨‍🍳 Chef: {chef_name}")
-                
-                with c3:
-                    st.write(f"**${dish['price']}**")
-                    if st.button("Add +", key=f"add_{dish['dish_id']}"):
-                        if not user_id or user_id == "Paste-UUID-Here":
-                            st.error("Please enter a Customer ID in the sidebar first.")
+            st.info("No dishes found.")
+        else:
+            cols = st.columns(3)
+            for index, dish in enumerate(dishes):
+                with cols[index % 3]: 
+                    with st.container(border=True):
+                        # Safe Price
+                        try: price_val = float(dish.get('price', 0))
+                        except: price_val = 0.0
+
+                        # Image
+                        if str(dish.get('picture', '')).startswith('http'):
+                             st.image(dish['picture'], use_column_width=True)
                         else:
-                            # NEW LOGIC: Add to Cart (POST to Cart Endpoint)
+                             st.markdown(f"<div style='text-align: center; font-size: 50px;'>🍲</div>", unsafe_allow_html=True)
+                        
+                        st.subheader(dish.get('name', 'Unnamed'))
+                        st.write(f"**${price_val:.2f}**")
+                        st.caption(dish.get('description', ''))
+                        
+                        # --- ADD ITEM LOGIC ---
+                        if st.button("Add +", key=f"add_{index}", use_container_width=True):
+                            # ROBUST ID FINDER: Try 'id', then 'pk', then 'dish_id'
+                            real_dish_id = dish.get('id') or dish.get('pk') or dish.get('dish_id')
+                            
+                            payload = {
+                                "customer_id": user_identifier,
+                                "dish_id": real_dish_id 
+                            }
+                            
+                            st.write(f"Debug: Sending {payload}") # <--- Temporary Debug
+                            
                             try:
-                                res = requests.post(API_URLS['cart'], json={
-                                    "customer_id": user_id,
-                                    "dish_id": dish['dish_id']
-                                })
-                                if res.status_code == 200 or res.status_code == 201:
-                                    st.toast(f"Added {dish['name']} to cart!")
+                                res = requests.post(API_URLS['add_item'], json=payload)
+                                if res.status_code in [200, 201]:
+                                    st.toast(f"Added!", icon="✅")
+                                    fetch_cart(user_identifier)
+                                    st.rerun()
                                 else:
-                                    st.error(f"Failed: {res.json().get('error', res.text)}")
+                                    # SHOW THE EXACT SERVER ERROR
+                                    st.error(f"Server Error (400): {res.json()}") 
                             except Exception as e:
-                                st.error("Connection Error")
+                                st.error(f"Conn Error: {e}")
 
     else:
-        st.error(f"Failed to load menu. Status: {response.status_code}")
+        st.error(f"Kitchen Offline: {response.status_code}")
 
 except Exception as e:
-    st.error(f"Could not connect to Kitchen (Backend). Is Django running? {e}")
+    st.error(f"App Error: {e}")
