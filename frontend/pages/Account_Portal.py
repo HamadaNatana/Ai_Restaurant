@@ -16,9 +16,12 @@ except Exception:
 
 from django.contrib.auth import authenticate, get_user_model
 from django.db import IntegrityError
-from accounts.models import Customer, Manager
+from accounts.models import Customer, Manager 
+from menu.models import Chef
+from delivery.models import Driver
+from common.models import User
+from hr.models import RegistrationApproval
 
-# Get the actual User model (common.User)
 User = get_user_model()
 
 # ---------------- Session State Helpers ----------------
@@ -31,54 +34,103 @@ def logout_user():
     st.session_state["username"] = None
     st.session_state["role"] = None
     st.session_state["logged_in"] = False
-    st.session_state["cart_items"] = []
+    # Clear other session data specific to roles if needed
+
+# ---------------- Page Views ----------------
+def show_manager_dashboard(user):
+    st.header("📈 Manager Dashboard")
+    st.write(f"Hello, {user.username}. Here are today's stats.")
+    # Add manager specific logic here (e.g., View Revenue, Manage Staff)
+    st.info("System Status: Online")
+
+def show_chef_interface(user):
+    st.header("👨‍🍳 Chef Kitchen View")
+    st.write("Current Orders Queue:")
+    # Add chef logic here (e.g., List active orders, mark as cooked)
+    st.warning("3 Orders Pending")
+
+def show_driver_interface(user):
+    st.header("🛵 Driver Portal")
+    st.write("Available Deliveries:")
+    # Add driver logic here (e.g., View delivery address, mark delivered)
+    st.success("You are active for deliveries.")
+
+def show_customer_profile(username):
+    try:
+        cust = Customer.objects.get(user__username=username)
+        st.subheader(f"Welcome, {cust.user.first_name or username}")
+        
+        col1, col2 = st.columns(2)
+        col1.metric("Wallet Balance", f"${cust.balance}")
+        col2.metric("Warnings", f"{cust.warnings}/3")
+        
+        if cust.status == 'vip':
+            st.balloons()
+            st.success("🌟 **VIP Member** - 5% Discount Applied")
+        else:
+            st.info("Regular Membership")
+            
+    except Customer.DoesNotExist:
+        st.error("Customer profile data is missing. Please contact support.")
 
 # ---------------- UI Layout ----------------
-st.set_page_config(page_title="Account Portal", page_icon="👤")
-st.title("👤 Account Portal")
+st.set_page_config(page_title="Restaurant Portal", page_icon="🍽️")
+st.title("🍽️ Restaurant Portal")
 
 if "logged_in" not in st.session_state:
     st.session_state["logged_in"] = False
 
 # ==========================================
-# VIEW 1: LOGGED IN PROFILE
+# VIEW: LOGGED IN (ROUTER)
 # ==========================================
 if st.session_state["logged_in"]:
-    username = st.session_state["username"]
-    role = st.session_state["role"]
+    # Retrieve user object again to pass to sub-functions if needed
+    # Or just use the session data
+    current_username = st.session_state["username"]
+    current_role = st.session_state["role"]
     
-    st.success(f"Welcome back, **{username}**!")
-    st.info(f"Current Role: **{role}**")
-    
-    if role in ["CUSTOMER", "VIP"]:
-        try:
-            # FIX: Filter by the RELATED user's username
-            cust = Customer.objects.get(user__username=username)
-            col1, col2 = st.columns(2)
-            col1.metric("Wallet Balance", f"${cust.balance}")
-            col2.metric("Warnings", f"{cust.warnings}/3")
-            
-            if cust.status == 'vip':
-                st.balloons()
-                st.write("🌟 **You are a VIP Member!** Enjoy 5% off and free delivery.")
-        except Customer.DoesNotExist:
-            st.warning("Customer profile not found.")
+    # Logout button in sidebar to keep main area clean
+    with st.sidebar:
+        st.write(f"Logged in as: **{current_username}**")
+        st.write(f"Role: **{current_role}**")
+        if st.button("Log Out"):
+            logout_user()
+            st.rerun()
 
-    if st.button("Log Out"):
-        logout_user()
-        st.rerun()
+    # --- ROLE BASED ROUTING ---
+    try:
+        # We fetch the user object to pass to the dashboards
+        active_user = User.objects.get(username=current_username)
+        
+        if current_role == "MANAGER":
+            show_manager_dashboard(active_user)
+        
+        elif current_role == "CHEF":
+            show_chef_interface(active_user)
+            
+        elif current_role == "DRIVER":
+            show_driver_interface(active_user)
+            
+        elif current_role in ["CUSTOMER", "VIP"]:
+            show_customer_profile(current_username)
+            
+        else:
+            st.error("Role not recognized. Please contact admin.")
+            
+    except User.DoesNotExist:
+        st.error("User session invalid. Please log out and log in again.")
 
 # ==========================================
-# VIEW 2: LOGIN / REGISTER TABS
+# VIEW: LOGIN / REGISTER
 # ==========================================
 else:
-    tab1, tab2 = st.tabs(["🔑 Login", "📝 Register"])
+    tab1, tab2 = st.tabs(["🔑 Login", "📝 New Customer Register"])
 
-    # --- TAB 1: LOGIN (UC 03) ---
+    # --- TAB 1: LOGIN ---
     with tab1:
         st.subheader("Sign In")
         with st.form("login_form"):
-            login_user_input = st.text_input("Username")
+            login_user_input = st.text_input("Username").strip() 
             login_pass_input = st.text_input("Password", type="password")
             submit_login = st.form_submit_button("Login")
         
@@ -86,34 +138,46 @@ else:
             user = authenticate(username=login_user_input, password=login_pass_input)
             
             if user is not None:
-                role = "VISITOR"
-                if hasattr(user, 'manager'):
-                    role = "MANAGER"
-                elif hasattr(user, 'driver'):
-                    role = "DRIVER"
+                if not user.is_active:
+                    st.error("This account is inactive.")
                 else:
-                    try:
-                        # FIX: Check user.customer instead of querying by username directly
-                        cust = Customer.objects.get(user=user)
-                        role = "VIP" if cust.status == 'vip' else "CUSTOMER"
-                    except Customer.DoesNotExist:
-                        role = "VISITOR"
+                    # Determine Role Priority
+                    # This assumes OneToOne fields named 'manager', 'chef', 'driver', 'customer'
+                    role = "VISITOR"
+                    
+                    if hasattr(user, 'manager'):
+                        role = "MANAGER"
+                    elif hasattr(user, 'chef'):  # Added Chef Check
+                        role = "CHEF"
+                    elif hasattr(user, 'driver'): # Added Driver Check
+                        role = "DRIVER"
+                    else:
+                        try:
+                            cust = Customer.objects.get(user=user)
+                            if cust.is_blacklisted:
+                                st.error("🚫 Access Denied: This account has been blacklisted due to numerous violations.")
+                                st.stop()
+                            role = "VIP" if cust.status == 'vip' else "CUSTOMER"
+                        except Customer.DoesNotExist:
+                            role = "VISITOR"
 
-                login_user(user.username, role)
-                st.success("Login successful!")
-                st.rerun()
+                    login_user(user.username, role)
+                    st.success(f"Login successful! Redirecting to {role} dashboard...")
+                    st.rerun()
             else:
                 st.error("Invalid username or password.")
 
-    # --- TAB 2: REGISTER (UC 01) ---
+    # --- TAB 2: REGISTER ---
     with tab2:
-        st.subheader("Create New Customer Account")
+        st.info("Only Visitors can register here. Staff must be added by a Manager.")
         with st.form("register_form"):
-            new_user = st.text_input("Choose Username")
-            new_email = st.text_input("Email Address")
+            first_name = st.text_input("Enter First Name").strip()
+            last_name = st.text_input("Enter Last Name").strip()
+            new_user = st.text_input("Choose Username").strip()
+            new_email = st.text_input("Email Address").strip()
             new_pass = st.text_input("Choose Password", type="password")
             confirm_pass = st.text_input("Confirm Password", type="password")
-            deposit = st.number_input("Initial Deposit ($)", min_value=0.0, value=100.0)
+            deposit = st.number_input("Initial Deposit ($)", min_value=0.0, value=0.0)
             submit_reg = st.form_submit_button("Register")
         
         if submit_reg:
@@ -121,21 +185,15 @@ else:
                 st.error("Passwords do not match.")
             elif not new_user:
                 st.error("Username is required.")
+            elif not first_name or not last_name:
+                st.error("Full name is required (Both first and last names)")
             else:
                 try:
-                    # 1. Create Django User
-                    user = User.objects.create_user(username=new_user, email=new_email, password=new_pass)
-                    
-                    # 2. Create Customer Profile
-                    # FIX: Removed 'username=new_user' because the Model doesn't have it.
-                    Customer.objects.create(
-                        user=user,
-                        balance=deposit,
-                        status='regular'
-                    )
-                    
-                    st.success("Account created! You can now log in.")
+                    user = User.objects.create_user(username=new_user, email=new_email, password=new_pass,
+                                                    first_name=first_name, last_name=last_name)
+                    RegistrationApproval.objects.create(user=user, balance=deposit, status='regular')
+                    st.success("Account created! Go to the Login tab to sign in.")
                 except IntegrityError:
-                    st.error("Username already taken.")
+                    st.error("That username is already taken.")
                 except Exception as e:
                     st.error(f"Error creating account: {e}")

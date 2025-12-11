@@ -4,6 +4,12 @@ from pathlib import Path
 from typing import Optional
 
 import streamlit as st
+from utils.auth_helper import require_role
+from utils.sidebar import generate_sidebar
+
+generate_sidebar()
+# STRICTLY for Customers/VIPs
+require_role(["CUSTOMER", "VIP"])
 
 # Optional dotenv
 try:

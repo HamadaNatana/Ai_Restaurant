@@ -1,6 +1,10 @@
 import streamlit as st
 import requests
+from utils.auth_helper import require_role
+from utils.sidebar import generate_sidebar
 
+generate_sidebar()
+require_role(["MANAGER"])
 # CONFIGURATION
 BASE_URL = "http://127.0.0.1:8000"
 

@@ -6,6 +6,13 @@ from typing import List, Dict, Optional
 import requests
 import streamlit as st
 
+from utils.auth_helper import require_role
+from utils.sidebar import generate_sidebar
+
+generate_sidebar()
+
+require_role(["VISITOR", "CUSTOMER", "VIP"])
+
 # Optional: dotenv (if installed)
 try:
     from dotenv import load_dotenv
