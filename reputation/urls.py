@@ -1,10 +1,10 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from . import views 
+from . import views
 
 router = DefaultRouter()
-router.register(r'feedback', views.FeedbackViewSet, basename='feedback')
+router.register(r'api', views.ReputationViewSet, basename='reputation')
 
 urlpatterns = [
-    path('api/', include(router.urls)),
+    path('', include(router.urls)),
 ]

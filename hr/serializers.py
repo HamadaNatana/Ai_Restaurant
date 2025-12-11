@@ -1,26 +1,39 @@
 from rest_framework import serializers
-from menu.models import Chef
-from delivery.models import Driver
-from accounts.models import Customer
+from .models import RegistrationApproval, HRAction, AssignmentMemo
 
-class ChefHRSerializer(serializers.ModelSerializer):
-    username = serializers.CharField(source='user.username', read_only=True)
-    
-    class Meta:
-        model = Chef
-        fields = ['chef_id', 'username', 'name', 'salary', 'demotion_count', 'is_active']
+# --- Registration Approval Serializers ---
 
-class DriverHRSerializer(serializers.ModelSerializer):
-    username = serializers.CharField(source='user.username', read_only=True)
-    
+class RegistrationApprovalSerializer(serializers.ModelSerializer):
+    # manager_id field will handle the Manager foreign key
     class Meta:
-        model = Driver
-        # Note: Driver model uses 'pay', not 'salary'
-        fields = ['driver_id', 'username', 'is_active', 'pay', 'warnings', 'demotion_count']
+        model = RegistrationApproval
+        fields = [
+            'id', 'manager', 'username', 'password_hash', 'address', 
+            'status', 'rejection_reason', 'created_at', 'processed_at'
+        ]
+        read_only_fields = ['status', 'processed_at', 'rejection_reason'] # Manager handles status update via a specific action
 
-class CustomerHRSerializer(serializers.ModelSerializer):
-    username = serializers.CharField(source='user.username', read_only=True)
-    
+class RegistrationApprovalUpdateSerializer(serializers.Serializer):
+    """Serializer used for the custom action to approve/reject a registration."""
+    status = serializers.ChoiceField(
+        choices=RegistrationApproval.STATUS_CHOICES[1:], # Only 'approved' or 'rejected'
+        required=True
+    )
+    rejection_reason = serializers.CharField(required=False, allow_blank=True)
+
+
+# --- HR Action Serializers ---
+
+class HRActionSerializer(serializers.ModelSerializer):
+    # This serializer handles the complex foreign key structure for actors
     class Meta:
-        model = Customer
-        fields = ['customer_id', 'username', 'status', 'warnings', 'balance', 'is_blacklisted']
+        model = HRAction
+        fields = '__all__'
+
+
+# --- Assignment Memo Serializers ---
+
+class AssignmentMemoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AssignmentMemo
+        fields = '__all__'

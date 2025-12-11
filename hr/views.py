@@ -1,77 +1,74 @@
-from rest_framework.decorators import api_view
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
 from rest_framework.response import Response
-from menu.models import Chef
-from delivery.models import Driver
-from accounts.models import Customer
-from .serializers import ChefHRSerializer, DriverHRSerializer, CustomerHRSerializer
+from django.utils import timezone
 
-# 1. DASHBOARD: Get all lists
-@api_view(['GET'])
-def hr_dashboard(request):
-    chefs = Chef.objects.all()
-    drivers = Driver.objects.all()
-    customers = Customer.objects.all()
-    
-    return Response({
-        "chefs": ChefHRSerializer(chefs, many=True).data,
-        "drivers": DriverHRSerializer(drivers, many=True).data,
-        "customers": CustomerHRSerializer(customers, many=True).data
-    })
+from .models import RegistrationApproval, HRAction, AssignmentMemo
+from .serializers import RegistrationApprovalSerializer, RegistrationApprovalUpdateSerializer, HRActionSerializer, AssignmentMemoSerializer
 
-# 2. PROMOTE/DEMOTE CHEF
-@api_view(['POST'])
-def manage_chef(request, pk):
-    try:
-        chef = Chef.objects.get(pk=pk)
-        action = request.data.get('action') # 'demote' or 'bonus'
-        
-        if action == 'demote':
-            # Business Rule: 2 Demotions = Fired
-            chef.demotion_count += 1
-            chef.salary = max(0, chef.salary - 500) # Pay cut
-            
-            if chef.demotion_count >= 2:
-                chef.is_active = False # Fired!
-                return Response({"message": f"Chef {chef.name} fired due to 2nd demotion."})
-                
-        elif action == 'bonus':
-            chef.salary += 500
-            
-        chef.save()
-        return Response(ChefHRSerializer(chef).data)
-    except Chef.DoesNotExist:
-        return Response({"error": "Chef not found"}, status=404)
+class RegistrationApprovalViewSet(viewsets.ModelViewSet):
+    """
+    Manages the list of pending, approved, and rejected user registrations.
+    Provides custom actions for managers to process approvals.
+    """
+    queryset = RegistrationApproval.objects.all().order_by('created_at')
+    serializer_class = RegistrationApprovalSerializer
+    # Only Managers should be able to access this. Authentication/Permissions are assumed.
 
-# 3. PROMOTE DRIVER (Performance Bonus)
-@api_view(['POST'])
-def manage_driver(request, pk):
-    try:
-        driver = Driver.objects.get(pk=pk)
-        action = request.data.get('action') # 'bonus' or 'fire'
-        
-        if action == 'bonus':
-            driver.pay += 100  # Bonus
-            
-        elif action == 'fire':
-            driver.is_active = False
-            
-        driver.save()
-        return Response(DriverHRSerializer(driver).data)
-    except Driver.DoesNotExist:
-        return Response({"error": "Driver not found"}, status=404)
+    # 1. Custom Action: Get Pending Registrations
+    # Route: /api/hr/registrations/pending/
+    @action(detail=False, methods=['get'])
+    def pending(self, request):
+        pending_registrations = self.get_queryset().filter(
+            status=RegistrationApproval.STATUS_PENDING
+        )
+        serializer = self.get_serializer(pending_registrations, many=True)
+        return Response(serializer.data)
 
-# 4. KICK CUSTOMER (UC 10)
-@api_view(['POST'])
-def kick_customer(request, pk):
-    try:
-        customer = Customer.objects.get(pk=pk)
+    # 2. Custom Action: Approve or Reject a specific registration
+    # Route: /api/hr/registrations/{pk}/process_request/
+    @action(detail=True, methods=['post'])
+    def process_request(self, request, pk=None):
+        registration = self.get_object()
+        serializer = RegistrationApprovalUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
         
-        # Business Rule: Clear balance before kicking
-        customer.balance = 0
-        customer.is_blacklisted = True
-        customer.status = 'banned' # Or whatever status David uses for banned
+        new_status = serializer.validated_data['status']
+        rejection_reason = serializer.validated_data.get('rejection_reason', '')
         
-        customer.save()
-        return Response({"message": f"Customer {customer.user.username} has been blacklisted and funds seized."})
-    except Customer.DoesNotExist:
-        return Response({"error": "Customer not found"}, status=404)
+        if registration.status != RegistrationApproval.STATUS_PENDING:
+            return Response(
+                {"error": f"Registration is already {registration.status}."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        registration.status = new_status
+        registration.processed_at = timezone.now()
+        
+        if new_status == RegistrationApproval.STATUS_REJECTED:
+            registration.rejection_reason = rejection_reason
+        
+        # --- Actual account creation/manipulation logic would go here ---
+        # e.g., if approved, call a service function to create the actual User/Chef/Driver account
+        # if new_status == RegistrationApproval.STATUS_APPROVED:
+        #     create_actual_account(registration)
+        # ---------------------------------------------------------------
+
+        registration.save()
+        
+        return Response(self.get_serializer(registration).data)
+
+
+class HRActionViewSet(viewsets.ModelViewSet):
+    """
+    Handles the creation and listing of personnel actions (fire, demote, bonus, etc.).
+    """
+    queryset = HRAction.objects.all().order_by('created_at')
+    serializer_class = HRActionSerializer
+
+class AssignmentMemoViewSet(viewsets.ModelViewSet):
+    """
+    Provides CRUD operations for Assignment Memos related to specific orders.
+    """
+    queryset = AssignmentMemo.objects.all().order_by('created_at')
+    serializer_class = AssignmentMemoSerializer

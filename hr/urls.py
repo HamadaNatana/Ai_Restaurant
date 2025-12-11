@@ -1,12 +1,13 @@
-from django.urls import path
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
 from . import views
 
+router = DefaultRouter()
+
+router.register(r'registrations', views.RegistrationApprovalViewSet, basename='registration-approval')
+router.register(r'actions', views.HRActionViewSet, basename='hr-action')
+router.register(r'memos', views.AssignmentMemoViewSet, basename='assignment-memo')
+
 urlpatterns = [
-    # Dashboard
-    path('api/dashboard/', views.hr_dashboard, name='hr_dashboard'),
-    
-    # Actions (Using UUIDs)
-    path('api/chef/<uuid:pk>/', views.manage_chef, name='manage_chef'),
-    path('api/driver/<uuid:pk>/', views.manage_driver, name='manage_driver'),
-    path('api/customer/kick/<uuid:pk>/', views.kick_customer, name='kick_customer'),
+    path('', include(router.urls)),
 ]

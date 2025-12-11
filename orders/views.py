@@ -1,79 +1,49 @@
-from rest_framework.views import APIView
+from rest_framework import viewsets, status, permissions, decorators
 from rest_framework.response import Response
-from rest_framework import status
-from .services import OrderService
+from .models import Order
 from .serializers import OrderSerializer
+from .services import OrderService
 
-class CartAPIView(APIView):
+class OrderViewSet(viewsets.ModelViewSet):
     """
-    Handles General Cart Operations (Get Cart, Add Item)
+    Unified Endpoint for Order Operations.
+    Matches the 'David Format' (ViewSet + Router) and your specific Schema.
     """
-    def get(self, request):
-        # UC07: Get Cart content
+    queryset = Order.objects.all()
+    serializer_class = OrderSerializer
+    permission_classes = [permissions.AllowAny] # Prevents 500 Permission Errors
+
+    # --- STANDARD CRUD ---
+    def get_queryset(self):
+        """Allow filtering orders by customer_id for order history"""
+        queryset = super().get_queryset()
+        customer_id_param = self.request.query_params.get('customer_id')
+        
+        if customer_id_param:
+            # FIX: Using 'customer_id__pk' because your model field is named 'customer_id'
+            queryset = queryset.filter(customer_id__pk=customer_id_param)
+        return queryset
+
+    # --- CART ACTIONS ---
+
+    @decorators.action(detail=False, methods=['get'])
+    def cart(self, request):
+        """Get the current pending cart for a customer."""
         customer_id = request.query_params.get('customer_id')
         if not customer_id:
             return Response({'error': 'customer_id required'}, status=status.HTTP_400_BAD_REQUEST)
         
+        # Calls your OrderService.validate_and_format_cart
         success, msg, data = OrderService.validate_and_format_cart(customer_id)
         if success:
             return Response(data, status=status.HTTP_200_OK)
         return Response({'error': msg}, status=status.HTTP_404_NOT_FOUND)
 
-    def post(self, request):
-        # UC07: Add Item to Cart
+    @decorators.action(detail=False, methods=['post'])
+    def add_item(self, request):
+        """Add an item to the cart."""
         customer_id = request.data.get('customer_id')
         dish_id = request.data.get('dish_id')
         
         if not customer_id or not dish_id:
-            return Response({'error': 'Missing customer_id or dish_id'}, status=status.HTTP_400_BAD_REQUEST)
-
-        success, msg = OrderService.add_to_cart(customer_id, dish_id)
-        if success:
-            return Response({'message': msg}, status=status.HTTP_200_OK)
-        return Response({'error': msg}, status=status.HTTP_400_BAD_REQUEST)
-
-class CartItemAPIView(APIView):
-    """
-    Handles Operations on Specific Cart Items (Update, Remove)
-    """
-    def put(self, request):
-        # UC07: Update Item Quantity
-        customer_id = request.data.get('customer_id')
-        item_id = request.data.get('item_id') # Note: This is the Dish ID in your service logic
-        quantity = request.data.get('quantity')
-
-        if not all([customer_id, item_id, quantity]):
-            return Response({'error': 'Missing data'}, status=status.HTTP_400_BAD_REQUEST)
-
-        success, msg = OrderService.update_cart_item(customer_id, item_id, quantity)
-        if success:
-            return Response({'message': msg}, status=status.HTTP_200_OK)
-        return Response({'error': msg}, status=status.HTTP_400_BAD_REQUEST)
-
-    def delete(self, request):
-        # UC07: Remove Item
-        customer_id = request.query_params.get('customer_id')
-        item_id = request.query_params.get('item_id') # Dish ID
-
-        if not customer_id or not item_id:
-            return Response({'error': 'Missing IDs'}, status=status.HTTP_400_BAD_REQUEST)
-
-        success, message = OrderService.remove_cart_item(customer_id, item_id)
-        if success:
-            return Response({'message': message}, status=status.HTTP_200_OK)
-        return Response({'error': message}, status=status.HTTP_400_BAD_REQUEST)
-
-class CheckoutAPIView(APIView):
-    """
-    Handles Final Checkout
-    """
-    def post(self, request):
-        customer_id = request.data.get('customer_id')
-        if not customer_id:
-            return Response({'error': 'customer_id required'}, status=status.HTTP_400_BAD_REQUEST)
-
-        success, msg, result = OrderService.checkout(customer_id)
-        
-        if success:
-            return Response(result, status=status.HTTP_200_OK)
-        return Response({'error': msg}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'error': 'Missing customer_id or dish_id'}, status=status.HTTP_400)

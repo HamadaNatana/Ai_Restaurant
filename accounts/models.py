@@ -10,7 +10,7 @@ class Customer(TimeStampedModel):
         (STATUS_VIP, "VIP"),
     ]
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, unique=True)
-    address = models.TextField(unique=True)
+    address = models.TextField(blank=True, null=True)
     is_blacklisted = models.BooleanField(default=False)
     warnings = models.PositiveIntegerField(default=0)
     total_spent = models.DecimalField(max_digits=10, decimal_places=2, default=0)

@@ -1,110 +1,103 @@
-from rest_framework import viewsets, status, decorators
+from rest_framework import viewsets, status, decorators, permissions, filters
 from rest_framework.response import Response
-from django.db.models import Q
-from .models import Dish, Allergen, AllergyPreference, Ingredient
+from .models import Dish, Allergen
 from .serializers import MenuDishSerializer, AllergenSerializer
+from .services import MenuService
 
 class DishViewSet(viewsets.ModelViewSet):
     """
-    Unified Endpoint for Menu Operations (UC06, UC19, UC22).
-    Standardizes to the 'David Format' (Class-Based ViewSet).
+    Unified Endpoint for Menu Operations (UC06, UC19).
+    Combines all 'dish_views.py' logic into one standard ViewSet.
     """
     queryset = Dish.objects.all().select_related('chef')
     serializer_class = MenuDishSerializer
-
-    # --- HELPER METHODS (Private) ---
-
-    def _get_customer_allergen_names(self, customer_id):
-        """Helper to fetch a list of allergen names for a customer (UC22)."""
-        try:
-            # Note: This checks the new AllergyPreference model Meherap built
-            allergy_pref = AllergyPreference.objects.filter(customer__pk=customer_id).first()
-            if allergy_pref:
-                return allergy_pref.get_allergen_list()
-            return []
-        except Exception:
-            return []
-
-    def _apply_allergy_filter(self, queryset, customer_id):
-        """Filter out dishes containing customer's allergens (Safety Mode)."""
-        allergen_names = self._get_customer_allergen_names(customer_id)
-        
-        if not allergen_names:
-            return queryset
-
-        # Find ingredients that are linked to these allergens
-        unsafe_ingredients = Ingredient.objects.filter(
-            allergens__name__in=allergen_names
-        )
-        
-        # Exclude dishes that contain these ingredients
-        return queryset.exclude(ingredients__in=unsafe_ingredients)
-
-    # --- MAIN LIST METHOD (The Menu) ---
+    permission_classes = [permissions.AllowAny] 
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['name', 'description']
 
     def list(self, request, *args, **kwargs):
-        """
-        UC06: Get filtered menu based on user type, search, and allergies.
-        """
+        """UC06: Display Menu (Read)"""
         user_type = request.query_params.get('user_type', 'Visitor')
         customer_id = request.query_params.get('customer_id')
-        search_query = request.query_params.get('search', '')
 
-        # 1. Start with Active Dishes (Active Chefs only)
-        # Note: We filter is_active=True unless it's a Manager/Chef viewing
-        queryset = self.get_queryset()
-        if user_type not in ['Manager', 'Chef']:
-            queryset = queryset.filter(is_active=True, chef_id__is_active=True)
-
-        # 2. VIP Filter
-        if user_type not in ['VIP', 'Chef', 'Manager']:
-            # Regular users don't see VIP specials
-            queryset = queryset.filter(special_for_vip=False)
-
-        # 3. Search Filter
-        if search_query:
-            queryset = queryset.filter(
-                Q(name__icontains=search_query) | 
-                Q(description__icontains=search_query)
-            )
-
-        # 4. Allergy Filter (UC22)
-        if customer_id and user_type != 'Visitor':
-            queryset = self._apply_allergy_filter(queryset, customer_id)
-
-        # Serialize
-        serializer = self.get_serializer(queryset, many=True)
+        success, message, dishes = MenuService.display_menu(customer_id, user_type)
+        
+        serializer = self.get_serializer(dishes, many=True)
         return Response({
-            "success": True,
-            "message": f"Menu loaded for {user_type}",
+            "success": success,
+            "message": message,
             "dishes": serializer.data
         })
 
-    # --- CHEF OPERATIONS (UC19) ---
-
     def create(self, request, *args, **kwargs):
-        """Chef adds a new dish."""
-        # Standard DRF create logic
-        return super().create(request, *args, **kwargs)
+        """UC19: Add Dish"""
+        chef_id = request.data.get('chef_id')
+        success, message, dish = MenuService.add_dish(chef_id, request.data)
+
+        if success:
+            return Response(
+                {"success": True, "message": message, "dish": MenuDishSerializer(dish).data},
+                status=status.HTTP_201_CREATED
+            )
+        return Response({"success": False, "error": message}, status=status.HTTP_400_BAD_REQUEST)
+
+    def update(self, request, *args, **kwargs):
+        """UC19: Update Dish (Replaces update_dish from dish_views)"""
+        dish = self.get_object()
+        # In real app: chef_id = request.user.chef.pk
+        chef_id = request.data.get('chef_id') 
+        
+        # We need to add an 'edit_dish' method to services.py if you want full logic,
+        # otherwise we can use standard serializer save here.
+        # For now, let's assume simple update or add edit_dish to MenuService if needed.
+        return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
+        """UC19: Safe Delete"""
+        dish = self.get_object()
+        chef_id = dish.chef.pk 
+        success, message = MenuService.delete_dish(dish.pk, chef_id)
+
+        if success:
+            return Response({"success": True, "message": message}, status=status.HTTP_200_OK)
+        return Response({"success": False, "error": message}, status=status.HTTP_400_BAD_REQUEST)
+
+    # --- EXTRA ACTIONS (Moved from dish_views.py) ---
+
+    @decorators.action(detail=True, methods=['post'])
+    def toggle_availability(self, request, pk=None):
         """
-        UC19: Soft Delete.
-        Instead of removing the record, mark it as inactive.
+        UC19: Toggle dish status (Replaces toggle_dish_availability)
         """
         dish = self.get_object()
-        dish.is_active = False
+        # Toggle logic
+        dish.is_active = not dish.is_active
         dish.save()
-        return Response(
-            {'message': 'Dish marked as unavailable (Soft Deleted)'}, 
-            status=status.HTTP_200_OK
-        )
+        
+        status_msg = "available" if dish.is_active else "unavailable"
+        return Response({
+            "success": True, 
+            "message": f"Dish marked as {status_msg}", 
+            "dish": MenuDishSerializer(dish).data
+        })
 
-    # --- EXTRA ACTIONS ---
+    @decorators.action(detail=False, methods=['get'])
+    def chef_dishes(self, request):
+        """
+        Get dishes for a specific chef (Replaces get_chef_dishes)
+        Usage: /menu/dishes/chef_dishes/?chef_id=...
+        """
+        chef_id = request.query_params.get('chef_id')
+        if not chef_id:
+            return Response({"error": "chef_id required"}, status=status.HTTP_400_BAD_REQUEST)
+            
+        dishes = self.get_queryset().filter(chef__pk=chef_id)
+        serializer = self.get_serializer(dishes, many=True)
+        return Response(serializer.data)
 
     @decorators.action(detail=False, methods=['get'])
     def allergens(self, request):
-        """Get all available allergens for the settings page."""
+        """Helper for Settings page"""
         allergens = Allergen.objects.all()
         serializer = AllergenSerializer(allergens, many=True)
         return Response(serializer.data)

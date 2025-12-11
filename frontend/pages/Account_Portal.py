@@ -3,6 +3,9 @@ import os
 import django
 import sys
 from pathlib import Path
+from utils.sidebar import generate_sidebar
+
+generate_sidebar()
 
 # ---------------- Django Setup ----------------
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
@@ -15,6 +18,7 @@ except Exception:
     pass
 
 from django.contrib.auth import authenticate, get_user_model
+from django.contrib.auth.hashers import make_password
 from django.db import IntegrityError
 from accounts.models import Customer, Manager 
 from menu.models import Chef
@@ -177,7 +181,8 @@ else:
             new_email = st.text_input("Email Address").strip()
             new_pass = st.text_input("Choose Password", type="password")
             confirm_pass = st.text_input("Confirm Password", type="password")
-            deposit = st.number_input("Initial Deposit ($)", min_value=0.0, value=0.0)
+            address = st.text_area("Delivery Address (Optional)").strip()
+            #deposit = st.number_input("Initial Deposit ($)", min_value=0.0, value=0.0)
             submit_reg = st.form_submit_button("Register")
         
         if submit_reg:
@@ -185,15 +190,33 @@ else:
                 st.error("Passwords do not match.")
             elif not new_user:
                 st.error("Username is required.")
-            elif not first_name or not last_name:
-                st.error("Full name is required (Both first and last names)")
             else:
                 try:
-                    user = User.objects.create_user(username=new_user, email=new_email, password=new_pass,
-                                                    first_name=first_name, last_name=last_name)
-                    RegistrationApproval.objects.create(user=user, balance=deposit, status='regular')
-                    st.success("Account created! Go to the Login tab to sign in.")
-                except IntegrityError:
-                    st.error("That username is already taken.")
+                    # 1. Check if they already exist in the REAL system
+                    if User.objects.filter(username=new_user).exists():
+                        st.error("Username already taken.")
+                        
+                    # 2. Check if they are already waiting in the PENDING list
+                    elif RegistrationApproval.objects.filter(username=new_user, status='pending').exists():
+                        st.error("An application for this username is already pending.")
+                        
+                    # 3. Create the "Waiting Room" Entry ONLY
+                    else:
+                        # We hash the password now so we can save it safely in the temporary table
+                        from django.contrib.auth.hashers import make_password
+                        hashed_pw = make_password(new_pass)
+                        
+                        RegistrationApproval.objects.create(
+                            username=new_user,
+                            email=new_email,
+                            first_name=first_name,
+                            last_name=last_name,
+                            password_hash=hashed_pw,
+                            address=address,
+                            status='pending'
+                            # manager is left NULL automatically
+                        )
+                        st.success("✅ Application submitted! Please wait for a Manager to approve your account.")
+                        
                 except Exception as e:
-                    st.error(f"Error creating account: {e}")
+                    st.error(f"Error submitting application: {e}")

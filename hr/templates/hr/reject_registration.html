@@ -1,6 +1,0 @@
-<h1>Reject {{ req.username }}</h1>
-<form method="post">
-    {% csrf_token %}
-    <textarea name="reason" placeholder="Why are you rejecting?"></textarea><br>
-    <button type="submit">Reject</button>
-</form>

@@ -1,11 +1,10 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import DishViewSet
+from . import views
 
 router = DefaultRouter()
-router.register(r'dishes', DishViewSet, basename='dish')
+router.register(r'dishes', views.DishViewSet, basename='dish')
 
 urlpatterns = [
-    # Include the router URLs
-    path('api/', include(router.urls)),
+    path('', include(router.urls)),
 ]
