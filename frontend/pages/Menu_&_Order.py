@@ -1,6 +1,7 @@
 import streamlit as st
 import requests
 import ollama
+import json
 from utils.auth_helper import require_role
 from utils.sidebar import generate_sidebar
 
@@ -94,23 +95,48 @@ with st.sidebar:
             d_name = item.get('dish_name') or item.get('name') or "Item"
             st.write(f"• {d_name} x{item.get('quantity', 1)}")
         
+        # --- REVISED CHECKOUT LOGIC WITH INSUFFICIENT BALANCE HANDLER (UC07) ---
         if st.button("💳 Checkout", type="primary", use_container_width=True):
+            if role == "Visitor":
+                st.error("Please log in or register to place an order (UC03).")
+                st.stop()
+                
             try:
                 res = requests.post(API_URLS['checkout'], json={"customer_id": user_identifier})
+                
                 if res.status_code == 200:
                     st.balloons()
-                    st.success("Order Placed!")
+                    st.success("Order Placed! Check the Delivery Portal for tracking (UC17).")
                     st.session_state.cart_items = [] 
                     st.session_state.cart_total = 0
                     st.rerun()
+                    
                 else:
-                    st.error(f"Checkout Failed: {res.text}")
+                    # Attempt to parse the server error message
+                    try:
+                        error_data = res.json()
+                        error_msg = error_data.get('error', res.text)
+                    except json.JSONDecodeError:
+                        error_msg = res.text
+                        
+                    # --- UC07 EXCEPTION 3: INSUFFICIENT BALANCE CHECK ---
+                    if "Insufficient balance" in error_msg:
+                        # This error means a warning was issued on the backend (UC07/UC10) [cite: 702-703]
+                        st.error("❌ Checkout Failed: Insufficient Balance!")
+                        st.warning(
+                            "Your account balance is too low to cover the order total. "
+                            "A warning has been issued. Please deposit funds (UC08) and try again."
+                        )
+                    else:
+                        # Handle other errors (e.g., dish unavailable, server failure)
+                        st.error(f"Checkout Failed: {error_msg}")
+
             except Exception as e:
                 st.error(f"Error: {e}")
     else:
         st.caption("Empty")
         if st.button("Refresh"): fetch_cart(user_identifier)
-
+        
 # 4. MAIN MENU
 st.title("🍔 AI Restaurant Menu")
 with st.container(border=True):

@@ -1,4 +1,0 @@
-kb_id,question,answer
-1,what are your vip benefits?,VIP customers get 5% discount on orders and one free delivery for every 3 orders.
-2,how many warnings until i am kicked out?,Registered customers are kicked out after 3 warnings. VIPs are first demoted at 2 warnings, then treated as registered.
-3,how do deposits work?,You must deposit money into your account before placing orders. If your balance is lower than the order total, the order is rejected and you get a warning.

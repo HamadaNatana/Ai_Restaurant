@@ -14,9 +14,9 @@ from accounts.models import Customer
 from accounts.services import update_customer_after_completed_order
 
 from menu.models import Dish 
-from orders.models import Order, OrderItem, Customer # Use Customer from orders.models for placeholders
+from orders.models import Order, OrderItem, Customer
 
-# Get User model for type checking
+
 User = get_user_model()
 
 
@@ -107,7 +107,7 @@ class OrderService:
         if not items:
             return (True, "Your cart is empty!", {'items': []})
 
-        # --- Phase 3: Calculate Totals ---
+        #Calculate Totals
         subtotal = sum(float(item.unit_price) * item.quantity for item in items)
         discount_amount = 0.0
         vip_discount_applied = False
@@ -124,7 +124,7 @@ class OrderService:
             
         total = subtotal - discount_amount + delivery_fee
         
-        # Update Order totals in DB 
+        #Update Order totals in DB 
         order.subtotal = subtotal
         order.discount_amount = discount_amount
         order.total = total
@@ -132,7 +132,7 @@ class OrderService:
         order.free_delivery_applied = free_delivery_applied
         order.save()
 
-        # Prepare response data
+        #Prepare response data
         formatted_items = [{
             'item_id': str(item.order_item_id),
             'dish_name': item.dish_id.name,
@@ -171,26 +171,26 @@ class OrderService:
             with transaction.atomic():
                 customer = Customer.objects.get(customer_id=customer_id)
 
-                # 2. Check Insufficient Balance (Exception 3)
+                #Check Insufficient Balance 
                 if float(customer.balance) < final_total:
                     cls._handle_insufficient_balance(customer, final_total)
                     return (False, "Order failed - Insufficient balance. Please add funds.", {})
 
-                # 3. Finalize Order (Phase 4, Step 14)
+                #Finalize Order 
                 order = Order.objects.get(customer_id=customer, status=Order.STATUS_PENDING)
                 order.status = Order.STATUS_PAID 
                 order.save()
                 
-                # 4. Reduce Customer Balance (Phase 4, Step 15)
+                #Reduce Customer Balance
                 customer.balance = F('balance') - final_total
                 
-                # 5. Update VIP order count (Phase 4, Step 16)
+                #Update VIP order count 
                 if customer.get_user_type().lower() == 'vip':
                     customer.order_count = F('order_count') + 1
                 
                 customer.save()
                 
-                # 7. Clear Cart by creating a new pending order (Phase 5, Step 20)
+                # 7. Clear Cart by creating a new pending order 
                 Order.objects.create(customer_id=customer, status=Order.STATUS_PENDING)
 
                 return (True, "Order placed successfully!", {'order_id': str(order.order_id)})
@@ -254,7 +254,7 @@ def complete_order(order: Order):
     order.status = Order.STATUS_COMPLETED
     order.save()
 
-    # update customer stats and VIP status
+    #Update customer stats and VIP status
     update_customer_after_completed_order(order.customer, float(order.total_price))
 
 def apply_vip_benefits(customer: Customer, order: Order) -> Order:
@@ -264,16 +264,14 @@ def apply_vip_benefits(customer: Customer, order: Order) -> Order:
     - Every 3rd VIP order → free delivery
     """
     if customer.status != Customer.STATUS_VIP:
-        return order  # nothing to do (registered customer)
+        return order  
 
-    # 1) 5% discount on items_total
+    #5% discount on items_total
     order.items_total = order.items_total * 0.95
     order.vip_discount_applied = True
 
-    # 2) Free delivery every 3rd VIP order
-    # Here we assume order_count is count of ALL previous orders (not including this one).
-    # On the 3rd, 6th, 9th... VIP order → free delivery
-    vip_order_number = customer.order_count + 1  # this order
+    #Free delivery every 3rd VIP order
+    vip_order_number = customer.order_count + 1 
     if vip_order_number % 3 == 0:
         order.delivery_fee = 0
         order.free_delivery_applied = True

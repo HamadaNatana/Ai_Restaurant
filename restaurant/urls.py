@@ -18,14 +18,15 @@ urlpatterns = [
     # Django apps
     path('api-auth/', include('rest_framework.urls')),
     path('accounts/', include('accounts.urls')),   
-    path('reputation/', include('reputation.urls')),
+    path('ai_assist/', include('ai_assist.urls')),
+    path('delivery/', include('delivery.urls')),
     path('hr/', include('hr.urls')),
+    path('menu/', include('menu.urls')),
+    path('orders/', include('orders.urls')),
     path('payments/', include('payments.urls')),
     path('reputation/', include('reputation.urls')),
     path("ai/chat/", ai_chat_redirect, name="ai_chat"),
     path("discussion/", discussion_redirect, name="discussion"),
-    path("allergy/", allergy_redirect, name="allergy"),
-    path('menu/', include('menu.urls')),
-    path('orders/', include('orders.urls')),
+    path('allergy/', allergy_redirect, name="allergy"),
 
 ]

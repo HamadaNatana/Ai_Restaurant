@@ -1,7 +1,7 @@
 from rest_framework import viewsets, status, decorators, permissions, filters
 from rest_framework.response import Response
-from .models import Dish, Allergen
-from .serializers import MenuDishSerializer, AllergenSerializer
+from .models import Dish, Allergen, Chef
+from .serializers import MenuDishSerializer, AllergenSerializer, ChefSerializer
 from .services import MenuService
 
 class DishViewSet(viewsets.ModelViewSet):
@@ -44,12 +44,8 @@ class DishViewSet(viewsets.ModelViewSet):
     def update(self, request, *args, **kwargs):
         """UC19: Update Dish (Replaces update_dish from dish_views)"""
         dish = self.get_object()
-        # In real app: chef_id = request.user.chef.pk
         chef_id = request.data.get('chef_id') 
         
-        # We need to add an 'edit_dish' method to services.py if you want full logic,
-        # otherwise we can use standard serializer save here.
-        # For now, let's assume simple update or add edit_dish to MenuService if needed.
         return super().update(request, *args, **kwargs)
 
     def destroy(self, request, *args, **kwargs):
@@ -62,7 +58,6 @@ class DishViewSet(viewsets.ModelViewSet):
             return Response({"success": True, "message": message}, status=status.HTTP_200_OK)
         return Response({"success": False, "error": message}, status=status.HTTP_400_BAD_REQUEST)
 
-    # --- EXTRA ACTIONS (Moved from dish_views.py) ---
 
     @decorators.action(detail=True, methods=['post'])
     def toggle_availability(self, request, pk=None):
@@ -101,3 +96,7 @@ class DishViewSet(viewsets.ModelViewSet):
         allergens = Allergen.objects.all()
         serializer = AllergenSerializer(allergens, many=True)
         return Response(serializer.data)
+    
+class ChefViewSet(viewsets.ModelViewSet):
+    queryset = Chef.objects.all()
+    serializer_class = ChefSerializer

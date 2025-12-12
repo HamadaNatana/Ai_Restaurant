@@ -16,7 +16,6 @@ class RegistrationApprovalViewSet(viewsets.ModelViewSet):
     # Only Managers should be able to access this. Authentication/Permissions are assumed.
 
     # 1. Custom Action: Get Pending Registrations
-    # Route: /api/hr/registrations/pending/
     @action(detail=False, methods=['get'])
     def pending(self, request):
         pending_registrations = self.get_queryset().filter(
@@ -26,7 +25,6 @@ class RegistrationApprovalViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     # 2. Custom Action: Approve or Reject a specific registration
-    # Route: /api/hr/registrations/{pk}/process_request/
     @action(detail=True, methods=['post'])
     def process_request(self, request, pk=None):
         registration = self.get_object()
@@ -47,12 +45,6 @@ class RegistrationApprovalViewSet(viewsets.ModelViewSet):
         
         if new_status == RegistrationApproval.STATUS_REJECTED:
             registration.rejection_reason = rejection_reason
-        
-        # --- Actual account creation/manipulation logic would go here ---
-        # e.g., if approved, call a service function to create the actual User/Chef/Driver account
-        # if new_status == RegistrationApproval.STATUS_APPROVED:
-        #     create_actual_account(registration)
-        # ---------------------------------------------------------------
 
         registration.save()
         

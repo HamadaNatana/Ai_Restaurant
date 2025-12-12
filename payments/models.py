@@ -16,10 +16,9 @@ class Transactions(TimeStampedModel):
 
     customer_id = models.ForeignKey(Customer, on_delete=models.PROTECT)
     
-    # FIX: Added null=True, blank=True so Deposits don't crash the system!
     order_id = models.ForeignKey(Order, on_delete=models.PROTECT, null=True, blank=True)
     
-    amount = models.DecimalField(max_digits=10, decimal_places=2, default=0) # Increased digits for safety
+    amount = models.DecimalField(max_digits=10, decimal_places=2, default=0) 
     type = models.CharField(max_length=10, choices=TYPE_CHOICES)
 
     def __str__(self):

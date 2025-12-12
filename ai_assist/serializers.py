@@ -7,12 +7,9 @@ class KBEntrySerializer(serializers.ModelSerializer):
         fields = ['id', 'question', 'answer', 'active', 'author_id']
 
 class AIAnswerSerializer(serializers.ModelSerializer):
-    """
-    Serializer to return the answer to the frontend.
-    """
     class Meta:
         model = AIAnswer
-        fields = ['id', 'question', 'answer', 'source', 'kb_id', 'created']
+        fields = ['id', 'question', 'answer', 'source', 'kb_id', 'created_at'] 
 
 class AIRatingSerializer(serializers.ModelSerializer):
     class Meta:
@@ -20,12 +17,9 @@ class AIRatingSerializer(serializers.ModelSerializer):
         fields = ['id', 'customer_id', 'ai_answer_id', 'stars', 'created_at']
 
 class KBFlagSerializer(serializers.ModelSerializer):
-    """
-    For managers to view flagged KB entries.
-    """
     kb_question = serializers.CharField(source='report_id.question', read_only=True)
     kb_answer = serializers.CharField(source='report_id.answer', read_only=True)
 
     class Meta:
         model = KBFlag
-        fields = ['id', 'customer_id', 'report_id', 'kb_question', 'kb_answer', 'reason', 'reviewed', 'created']
+        fields = ['id', 'customer_id', 'report_id', 'kb_question', 'kb_answer', 'reason', 'reviewed', 'created_at']

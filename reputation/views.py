@@ -14,6 +14,28 @@ class ReputationViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.AllowAny]
 
     # --- ACTIONS ---
+    
+    @decorators.action(detail=True, methods=['post'])
+    def resolve_complaint(self, request, pk=None):
+        """UC13/UC14: Manager accepts or dismisses a complaint."""
+        decision = request.data.get('decision') # 'accepted' or 'dismissed'
+        
+        success, msg, _ = ReputationService.resolve_complaint(pk, decision)
+
+        if success:
+            return Response({'message': msg}, status=status.HTTP_200_OK)
+        return Response({'error': msg}, status=status.HTTP_400_BAD_REQUEST)
+
+    @decorators.action(detail=True, methods=['post'])
+    def accept_compliment(self, request, pk=None):
+        """UC13: Manager manually accepts a pending compliment."""
+        # NOTE: Authorization check (Manager role) is crucial here.
+        
+        success, msg, _ = ReputationService.accept_compliment(pk)
+
+        if success:
+            return Response({'message': msg}, status=status.HTTP_200_OK)
+        return Response({'error': msg}, status=status.HTTP_400_BAD_REQUEST)
 
     @decorators.action(detail=False, methods=['post'])
     def rate_food(self, request):
@@ -33,11 +55,11 @@ class ReputationViewSet(viewsets.ModelViewSet):
     def file_complaint(self, request):
         """Submit a complaint."""
         customer_id = request.data.get('customer_id')
-        target_type = request.data.get('target_type') # 'dish', 'driver', 'chef'
+        target_type = request.data.get('target_type')
         target_id = request.data.get('target_id')
         message = request.data.get('message')
 
-        # Check VIP status
+        #Check VIP status
         is_vip = False
         try:
             customer = Customer.objects.get(pk=customer_id)

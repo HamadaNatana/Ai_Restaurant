@@ -34,4 +34,4 @@ Select a module from the **sidebar** to begin:
 if 'cart' not in st.session_state:
     st.session_state.cart = []
 if 'user_role' not in st.session_state:
-    st.session_state.user_role = 'Guest'
+    st.session_state.user_role = 'Visitor'

@@ -16,7 +16,6 @@ class AIChatViewSet(viewsets.GenericViewSet):
     def ask(self, request):
         """
         UC20: Ask a question.
-        Input: { "customer_id": "...", "question": "..." }
         """
         customer_id = request.data.get('customer_id')
         question = request.data.get('question')
@@ -37,7 +36,6 @@ class AIChatViewSet(viewsets.GenericViewSet):
     def rate(self, request):
         """
         UC21: Rate an answer (0-5 stars).
-        Input: { "customer_id": "...", "ai_answer_id": 123, "stars": 5 }
         """
         customer_id = request.data.get('customer_id')
         ai_answer_id = request.data.get('ai_answer_id')
@@ -58,4 +56,3 @@ class ManagerKBViewSet(viewsets.ModelViewSet):
     """
     queryset = KBFlag.objects.all()
     serializer_class = KBFlagSerializer
-    permission_classes = [permissions.AllowAny] # In real app, restrict to Managers

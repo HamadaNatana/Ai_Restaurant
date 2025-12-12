@@ -72,18 +72,15 @@ class LoginAPIView(APIView):
 
         if user is not None:
             # Check blacklist (UC3 logic)
-            if user.is_blacklisted:
+            if user.customer.is_blacklisted:
                 return Response({"error": "Your account has been blocked."}, status=status.HTTP_403_FORBIDDEN)
             
-            customer = user.customer # Assuming 1:1 relation to Customer model
+            customer = user.customer 
 
             # Build warning info (UC15 logic)
             warning_msg = build_warning_message(customer)
 
-            # NOTE: You must replace this placeholder with actual token generation code 
-            # (e.g., Simple JWT's token_obtain_pair view logic)
-            return Response({
-                "token": "YOUR_GENERATED_JWT_TOKEN", 
+            return Response({ 
                 "username": user.username,
                 "warning_message": warning_msg
             })

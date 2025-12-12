@@ -5,9 +5,6 @@ from accounts.models import Customer
 from menu.models import Chef, Dish
 from delivery.models import Driver
 
-# -----------------------------------------------------------
-#   UC16: Discussion Board (Topics + Posts)
-# -----------------------------------------------------------
 class DiscussionThread(TimeStampedModel):
     CATEGORY_CHOICES = [
         ("chef", "Chef"),

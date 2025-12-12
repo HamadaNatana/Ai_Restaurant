@@ -11,14 +11,12 @@ class AIService:
         UC20: Answers a question.
         Priority: 1. Local KB (Exact match) -> 2. Mistral AI (Fallback)
         """
-        # 1. Search KB
         kb_match = KBEntry.objects.filter(
             question__icontains=question_text, 
             active=True
         ).first()
 
         if kb_match:
-            # Source: KB
             answer = AIAnswer.objects.create(
                 kb_id=kb_match,
                 question=question_text,
@@ -26,9 +24,7 @@ class AIService:
                 source="kb"
             )
         else:
-            # Source: LLM (Mistral)
             try:
-                # System prompt to keep the AI on topic
                 system_instruction = "You are a helpful customer service AI for a restaurant. Answer briefly and politely."
                 
                 response = ollama.chat(model='mistral', messages=[
@@ -38,7 +34,6 @@ class AIService:
                 llm_response_text = response['message']['content']
 
             except Exception as e:
-                # Fallback if AI server is down
                 llm_response_text = "I apologize, but I am unable to connect to the server at the moment."
                 print(f"AI Error: {e}")
 
@@ -90,3 +85,49 @@ class AIService:
             return False, "Customer not found."
         except Exception as e:
             return False, str(e)
+        
+    @staticmethod
+    def submit_rating(customer_id, ai_answer_id, stars):
+        """
+        UC21: Rate an answer.
+        Logic: If stars == 0 and source was KB, flag the KB entry.
+        """
+        try:
+            stars = int(stars)
+            if not (0 <= stars <= 5):
+                return False, "Stars must be between 0 and 5"
+            
+
+            try:
+                customer = Customer.objects.get(user__username=str(customer_id))
+            except (Customer.DoesNotExist, ValueError):
+                return False, f"Customer '{customer_id}' not found."
+
+            try:
+                ai_answer = AIAnswer.objects.get(pk=ai_answer_id)
+            except AIAnswer.DoesNotExist:
+                return False, "AI Answer record not found."
+
+            existing_rating = AIRating.objects.filter(customer_id=customer, ai_answer_id=ai_answer).first()
+            if existing_rating:
+                existing_rating.stars = stars
+                existing_rating.save()
+            else:
+                AIRating.objects.create(
+                    customer_id=customer,
+                    ai_answer_id=ai_answer,
+                    stars=stars
+                )
+
+            if stars == 0 and ai_answer.source == "kb" and ai_answer.kb_id:
+                KBFlag.objects.get_or_create(
+                    customer_id=customer,
+                    report_id=ai_answer.kb_id, 
+                    defaults={'reason': "Rated 0 stars by user"}
+                )
+                return True, "Rating submitted. KB Entry has been flagged for review."
+
+            return True, "Rating submitted."
+
+        except Exception as e:
+            return False, f"System Error: {str(e)}"

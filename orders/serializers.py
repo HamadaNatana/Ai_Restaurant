@@ -5,40 +5,40 @@ class OrderItemSerializer(serializers.ModelSerializer):
     """
     Serializer for individual items in the cart.
     """
-    # 1. Map 'dish_name' from the related 'dish_id' object
     dish_name = serializers.CharField(source='dish_id.name', read_only=True)
-    
-    # 2. Return the UUID of the dish (using the field 'dish_id')
-    dish = serializers.UUIDField(source='dish_id.pk', read_only=True)
-    
-    # 3. Calculate subtotal on the fly (price * quantity)
-    #    (Or use the field from the model if you store it)
-    subtotal = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+    dish_image = serializers.ImageField(source='dish_id.picture', read_only=True)
+    dish = serializers.IntegerField(source='dish_id.pk', read_only=True)
+    subtotal = serializers.SerializerMethodField()
 
     class Meta:
         model = OrderItem
-        # Note: We use 'id' for the item's own ID unless you have a specific 'order_item_id' field
-        fields = ['id', 'dish', 'dish_name', 'quantity', 'unit_price', 'subtotal']
+        fields = ['id', 'dish', 'dish_name', 'dish_image', 'quantity', 'unit_price', 'subtotal']
+
+    def get_subtotal(self, obj):
+        """
+        Calculates quantity * unit_price dynamically.
+        """
+        if obj.unit_price and obj.quantity:
+            return obj.quantity * obj.unit_price
+        return 0
 
 class OrderSerializer(serializers.ModelSerializer):
     """
     Serializer for the full Order/Cart.
     """
-    # 1. Use the related_name='items' from your model
     items = OrderItemSerializer(many=True, read_only=True)
     
-    # 2. Get customer username safely through 'customer_id' field
     customer_name = serializers.CharField(source='customer_id.user.username', read_only=True)
 
     class Meta:
         model = Order
         fields = [
-            'id',               # Order ID
-            'customer_id',      # The raw customer ID
-            'customer_name',    # The readable name
+            'id',               
+            'customer_id',      
+            'customer_name',    
             'status', 
-            'total',            # Matches your model field 'total'
-            'created',          # From TimeStampedModel
+            'total',            
+            'created_at',         
             'items',
             'subtotal',
             'discount_amount'

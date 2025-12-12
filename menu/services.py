@@ -2,9 +2,6 @@ from typing import Tuple, List, Dict, Optional
 from django.db import transaction
 from django.db.models import Q
 from .models import Dish, Chef, Allergen, AllergyPreference, Ingredient
-
-# Import Order models lazily inside methods if needed to avoid circular imports, 
-# or at top if your structure allows.
 from orders.models import Order, OrderItem 
 
 class MenuService:
@@ -25,25 +22,18 @@ class MenuService:
         Main entry point for fetching the menu.
         Applies Availability -> User Type Filter -> Allergy Safety Filter.
         """
-        # 1. Retrieve all active dishes (base pool)
-        # Note: We fetch ALL dishes initially, then filter based on user_type below
-        # to allow Chefs/Managers to see inactive dishes if needed.
         dishes = Dish.objects.all().select_related('chef').prefetch_related('ingredient')
 
-        # 2. Apply User Type Visibility Rules
-        # Visitor/Customer: Only see Active Dishes & Active Chefs
         if user_type not in ['Manager', 'Chef']:
             dishes = dishes.filter(is_active=True, chef__is_active=True)
         
-        # Visitor: Cannot see VIP specials
-        if user_type == 'Visitor':
+        # Visitors and registered customers should not see vip specials 
+        if user_type in ['Visitor', 'customer']: 
             dishes = dishes.filter(special_for_vip=False)
         
-        # 3. Apply Allergy Safety Filter (The "Safety Mode")
         if customer_id and user_type != 'Visitor':
             dishes = MenuService._apply_allergy_filter(dishes, customer_id)
 
-        # 4. Sort by Name
         final_list = dishes.order_by('name')
 
         if not final_list.exists():
@@ -60,7 +50,6 @@ class MenuService:
                 return queryset
             
             # Find ingredients that match the customer's allergens
-            # (Assuming Allergen model link is set up correctly)
             unsafe_ingredients = Ingredient.objects.filter(allergens__in=pref.allergens.all())
             return queryset.exclude(ingredient__in=unsafe_ingredients)
         except Exception:
@@ -84,7 +73,6 @@ class MenuService:
 
         # 2. Check Chef Status
         try:
-            # Handle case where chef_id might be the Chef object itself or an ID
             if hasattr(chef_id, 'pk'):
                 chef = chef_id
             else:
